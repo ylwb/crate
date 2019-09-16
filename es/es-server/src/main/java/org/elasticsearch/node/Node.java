@@ -313,7 +313,6 @@ public class Node implements Closeable {
                                                                      settingsModule.getClusterSettings(),
                                                                      threadPool);
             resourcesToClose.add(clusterService);
-
             final DiskThresholdMonitor listener = new DiskThresholdMonitor(settings, clusterService::state,
                                                                            clusterService.getClusterSettings(), client);
             final ClusterInfoService clusterInfoService = newClusterInfoService(settings,
@@ -494,7 +493,7 @@ public class Node implements Closeable {
                                                                         clusterModule.getAllocationService(),
                                                                         environment.configFile(),
                                                                         gatewayMetaState);
-            this.nodeService = new NodeService(monitorService, indicesService, transportService);
+            this.nodeService = new NodeService(monitorService, indicesService);
 
             modules.add(b -> {
                     b.bind(Node.class).toInstance(this);
