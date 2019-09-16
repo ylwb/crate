@@ -32,12 +32,8 @@ public class NodesStatsRequest extends BaseNodesRequest<NodesStatsRequest> {
         super(concreteNodes);
     }
 
-    public NodesStatsRequest() {
-    }
-
-    @Override
-    public void readFrom(StreamInput in) throws IOException {
-        super.readFrom(in);
+    public NodesStatsRequest(StreamInput in) throws IOException {
+        super(in);
     }
 
     @Override

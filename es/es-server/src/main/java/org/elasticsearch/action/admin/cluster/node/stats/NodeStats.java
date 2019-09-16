@@ -41,14 +41,9 @@ public class NodeStats extends BaseNodeResponse {
     }
 
     public NodeStats(StreamInput in) throws IOException {
+        super(in);
         timestamp = in.readVLong();
         fs = in.readOptionalWriteable(FsInfo::new);
-    }
-
-    public static NodeStats readNodeStats(StreamInput in) throws IOException {
-        NodeStats nodeInfo = new NodeStats(in);
-        nodeInfo.readFrom(in);
-        return nodeInfo;
     }
 
     public long getTimestamp() {
@@ -63,13 +58,6 @@ public class NodeStats extends BaseNodeResponse {
 
     public FsInfo getFs() {
         return fs;
-    }
-
-    @Override
-    public void readFrom(StreamInput in) throws IOException {
-        super.readFrom(in);
-        timestamp = in.readVLong();
-        fs = in.readOptionalWriteable(FsInfo::new);
     }
 
     @Override

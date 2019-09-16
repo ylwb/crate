@@ -32,11 +32,6 @@ public class NodesStatsAction extends Action<NodesStatsRequest, NodesStatsRespon
     }
 
     @Override
-    public NodesStatsResponse newResponse() {
-        return new NodesStatsResponse();
-    }
-
-    @Override
     public NodesStatsRequestBuilder newRequestBuilder(ElasticsearchClient client) {
         return new NodesStatsRequestBuilder(client, this);
     }
