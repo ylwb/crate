@@ -103,8 +103,6 @@ import org.elasticsearch.common.collect.Tuple;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.inject.Singleton;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.common.util.BigArrays;
-import org.elasticsearch.common.util.PageCacheRecycler;
 import org.elasticsearch.index.shard.ShardId;
 import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.node.Node;
@@ -158,7 +156,6 @@ public class JobSetup {
                     TransportActionProvider transportActionProvider,
                     IndicesService indicesService,
                     Functions functions,
-                    PageCacheRecycler pageCacheRecycler,
                     SystemCollectSource systemCollectSource,
                     ShardCollectSource shardCollectSource,
                     MemoryManagerFactory memoryManagerFactory) {
@@ -175,7 +172,6 @@ public class JobSetup {
         inputFactory = new InputFactory(functions);
         searchTp = threadPool.executor(ThreadPool.Names.SEARCH);
         EvaluatingNormalizer normalizer = EvaluatingNormalizer.functionOnlyNormalizer(functions);
-        BigArrays bigArrays = new BigArrays(pageCacheRecycler, circuitBreakerService, CrateCircuitBreakerService.QUERY, true);
         this.projectorFactory = new ProjectionToProjectorVisitor(
             clusterService,
             nodeJobsCounter,
@@ -186,8 +182,7 @@ public class JobSetup {
             inputFactory,
             normalizer,
             systemCollectSource::getRowUpdater,
-            systemCollectSource::tableDefinition,
-            bigArrays
+            systemCollectSource::tableDefinition
         );
     }
 
@@ -196,7 +191,6 @@ public class JobSetup {
                                                                  RootTask.Builder contextBuilder,
                                                                  SharedShardContexts sharedShardContexts) {
         Context context = new Context(
-            breaker(),
             clusterService.localNode().getId(),
             sessionInfo,
             contextBuilder,
@@ -221,7 +215,6 @@ public class JobSetup {
                                                                   List<Tuple<ExecutionPhase, RowConsumer>> handlerPhases,
                                                                   SharedShardContexts sharedShardContexts) {
         Context context = new Context(
-            breaker(),
             clusterService.localNode().getId(),
             sessionInfo,
             taskBuilder,
@@ -283,10 +276,7 @@ public class JobSetup {
             if (ExecutionPhases.hasDirectResponseDownstream(nodeOperation.downstreamNodes())) {
                 var executionPhase = nodeOperation.executionPhase();
                 CircuitBreaker breaker = breaker();
-                int ramAccountingBlockSizeInBytes = BlockBasedRamAccounting.calculateBlockSizeInBytes(
-                    breaker.getLimit(),
-                    1
-                );
+                int ramAccountingBlockSizeInBytes = BlockBasedRamAccounting.blockSizeInBytes(breaker.getLimit());
                 var ramAccounting = new BlockBasedRamAccounting(
                     b -> breaker.addEstimateBytesAndMaybeBreak(b, executionPhase.label()),
                     ramAccountingBlockSizeInBytes);
@@ -461,21 +451,18 @@ public class JobSetup {
 
         private final List<CompletableFuture<StreamBucket>> directResponseFutures = new ArrayList<>();
         private final NodeOperationCtx opCtx;
-        private final CircuitBreaker circuitBreaker;
         private final RootTask.Builder taskBuilder;
         private final Logger logger;
         private final List<ExecutionPhase> leafs = new ArrayList<>();
         private final TransactionContext transactionContext;
 
-        Context(CircuitBreaker circuitBreaker,
-                String localNodeId,
+        Context(String localNodeId,
                 SessionSettings sessionInfo,
                 RootTask.Builder taskBuilder,
                 Logger logger,
                 DistributingConsumerFactory distributingConsumerFactory,
                 Collection<? extends NodeOperation> nodeOperations,
                 SharedShardContexts sharedShardContexts) {
-            this.circuitBreaker = circuitBreaker;
             this.taskBuilder = taskBuilder;
             this.logger = logger;
             this.opCtx = new NodeOperationCtx(localNodeId, nodeOperations);
@@ -572,10 +559,7 @@ public class JobSetup {
                 throw new IllegalArgumentException("The routing of the countPhase doesn't contain the current nodeId");
             }
             CircuitBreaker breaker = breaker();
-            int ramAccountingBlockSizeInBytes = BlockBasedRamAccounting.calculateBlockSizeInBytes(
-                breaker.getLimit(),
-                1
-            );
+            int ramAccountingBlockSizeInBytes = BlockBasedRamAccounting.blockSizeInBytes(breaker.getLimit());
             var ramAccounting = ConcurrentRamAccounting.forCircuitBreaker(phase.label(), breaker);
             RowConsumer consumer = context.getRowConsumer(
                 phase,
@@ -601,7 +585,7 @@ public class JobSetup {
                 pkLookupPhase.getIdsByShardId(clusterService.localNode().getId());
 
             CircuitBreaker breaker = breaker();
-            int ramAccountingBlockSizeInBytes = BlockBasedRamAccounting.calculateBlockSizeInBytes(
+            int ramAccountingBlockSizeInBytes = BlockBasedRamAccounting.blockSizeInBytesPerShard(
                 breaker.getLimit(),
                 idsByShardId.size()
             );
@@ -650,21 +634,22 @@ public class JobSetup {
             int pageSize = Paging.getWeightedPageSize(Paging.PAGE_SIZE, 1.0d / phase.nodeIds().size());
 
             CircuitBreaker breaker = breaker();
-            int ramAccountingBlockSizeInBytes = BlockBasedRamAccounting.calculateBlockSizeInBytes(
-                breaker.getLimit(),
-                1
-            );
+            int ramAccountingBlockSizeInBytes = BlockBasedRamAccounting.blockSizeInBytes(breaker.getLimit());
             var ramAccounting = ConcurrentRamAccounting.forCircuitBreaker(phase.label(), breaker);
             var ramAccountingForMerge = new BlockBasedRamAccounting(
                 ramAccounting::addBytes,
                 ramAccountingBlockSizeInBytes);
 
-            RowConsumer consumer = context.getRowConsumer(phase, pageSize, ramAccountingForMerge);
+            RowConsumer finalRowConsumer = context.getRowConsumer(phase, pageSize, ramAccountingForMerge);
             MemoryManager memoryManager = memoryManagerFactory.getMemoryManager(ramAccounting);
+            finalRowConsumer.completionFuture().whenComplete((result, error) -> {
+                memoryManager.close();
+                ramAccounting.close();
+            });
 
             if (upstreamOnSameNode && phase.numInputs() == 1) {
-                consumer = ProjectingRowConsumer.create(
-                    consumer,
+                RowConsumer projectingRowConsumer = ProjectingRowConsumer.create(
+                    finalRowConsumer,
                     phase.projections(),
                     phase.jobId(),
                     context.txnCtx(),
@@ -672,11 +657,7 @@ public class JobSetup {
                     memoryManager,
                     projectorFactory
                 );
-                consumer.completionFuture().whenComplete((result, error) -> {
-                    memoryManager.close();
-                    ramAccounting.close();
-                });
-                context.registerBatchConsumer(phase.phaseId(), consumer);
+                context.registerBatchConsumer(phase.phaseId(), projectingRowConsumer);
                 return true;
             }
 
@@ -684,10 +665,8 @@ public class JobSetup {
             List<Projection> projections = phase.projections();
             if (projections.size() > 0) {
                 Projection firstProjection = projections.get(0);
-
                 if (firstProjection instanceof GroupProjection) {
                     GroupProjection groupProjection = (GroupProjection) firstProjection;
-
                     GroupingProjector groupingProjector = (GroupingProjector) projectorFactory.create(
                         groupProjection,
                         context.txnCtx(),
@@ -699,7 +678,6 @@ public class JobSetup {
                     projections = projections.subList(1, projections.size());
                 } else if (firstProjection instanceof AggregationProjection) {
                     AggregationProjection aggregationProjection = (AggregationProjection) firstProjection;
-
                     AggregationPipe aggregationPipe = (AggregationPipe) projectorFactory.create(
                         aggregationProjection,
                         context.txnCtx(),
@@ -712,20 +690,15 @@ public class JobSetup {
                 }
             }
 
-            consumer = ProjectingRowConsumer.create(
-                consumer,
+            RowConsumer projectingRowConsumer = ProjectingRowConsumer.create(
+                finalRowConsumer,
                 projections,
                 phase.jobId(),
                 context.txnCtx(),
-                ramAccounting,          // some projectors may account ram concurrently, e.g. fetch
+                ramAccountingForMerge,
                 memoryManager,
                 projectorFactory
             );
-            consumer.completionFuture().whenComplete((result, error) -> {
-                memoryManager.close();
-                ramAccounting.close();
-            });
-
             PageBucketReceiver pageBucketReceiver;
             if (collector == null) {
                 pageBucketReceiver = new CumulativePageBucketReceiver(
@@ -733,7 +706,7 @@ public class JobSetup {
                     phase.phaseId(),
                     searchTp,
                     DataTypes.getStreamers(phase.inputTypes()),
-                    consumer,
+                    projectingRowConsumer,
                     PagingIterator.create(
                         phase.numUpstreams(),
                         false,
@@ -745,12 +718,11 @@ public class JobSetup {
             } else {
                 pageBucketReceiver = new IncrementalPageBucketReceiver<>(
                     collector,
-                    consumer,
+                    projectingRowConsumer,
                     searchTp,
                     DataTypes.getStreamers(phase.inputTypes()),
                     phase.numUpstreams());
             }
-
             context.registerSubContext(new DistResultRXTask(
                 phase.phaseId(),
                 phase.name(),
@@ -765,7 +737,7 @@ public class JobSetup {
         @Override
         public Boolean visitRoutedCollectPhase(final RoutedCollectPhase phase, final Context context) {
             CircuitBreaker breaker = breaker();
-            int ramAccountingBlockSizeInBytes = BlockBasedRamAccounting.calculateBlockSizeInBytes(
+            int ramAccountingBlockSizeInBytes = BlockBasedRamAccounting.blockSizeInBytesPerShard(
                 breaker.getLimit(),
                 phase.routing().numShards(clusterService.localNode().getId())
             );
@@ -793,10 +765,7 @@ public class JobSetup {
         @Override
         public Boolean visitCollectPhase(CollectPhase phase, Context context) {
             CircuitBreaker breaker = breaker();
-            int ramAccountingBlockSizeInBytes = BlockBasedRamAccounting.calculateBlockSizeInBytes(
-                breaker.getLimit(),
-                1
-            );
+            int ramAccountingBlockSizeInBytes = BlockBasedRamAccounting.blockSizeInBytes(breaker.getLimit());
             RamAccounting ramAccounting = ConcurrentRamAccounting.forCircuitBreaker(phase.label(), breaker);
             RowConsumer consumer = context.getRowConsumer(
                 phase,
@@ -851,19 +820,16 @@ public class JobSetup {
         @Override
         public Boolean visitNestedLoopPhase(NestedLoopPhase phase, Context context) {
             CircuitBreaker breaker = breaker();
-            int ramAccountingBlockSizeInBytes = BlockBasedRamAccounting.calculateBlockSizeInBytes(
-                breaker.getLimit(),
-                1
-            );
-            var ramAccounting = ConcurrentRamAccounting.forCircuitBreaker(phase.label(), breaker);
+            int ramAccountingBlockSizeInBytes = BlockBasedRamAccounting.blockSizeInBytes(breaker.getLimit());
+            var concurrentRamAccounting = ConcurrentRamAccounting.forCircuitBreaker(phase.label(), breaker);
             var ramAccountingOfOperation = new BlockBasedRamAccounting(
-                ramAccounting::addBytes,
+                concurrentRamAccounting::addBytes,
                 ramAccountingBlockSizeInBytes);
             RowConsumer lastConsumer = context.getRowConsumer(phase, Paging.PAGE_SIZE, ramAccountingOfOperation);
-            var memoryManager = memoryManagerFactory.getMemoryManager(ramAccounting);
+            var memoryManager = memoryManagerFactory.getMemoryManager(concurrentRamAccounting);
             lastConsumer.completionFuture().whenComplete((result, error) -> {
                 memoryManager.close();
-                ramAccounting.close();
+                concurrentRamAccounting.close();
             });
 
             RowConsumer firstConsumer = ProjectingRowConsumer.create(
@@ -871,7 +837,7 @@ public class JobSetup {
                 phase.projections(),
                 phase.jobId(),
                 context.txnCtx(),
-                ramAccounting,          // some projectors may account ram concurrently, e.g. fetch
+                ramAccountingOfOperation,
                 memoryManager,
                 projectorFactory
             );
@@ -884,7 +850,7 @@ public class JobSetup {
                 joinCondition,
                 phase.joinType(),
                 breaker(),
-                phase.blockNestedLoop ? ramAccounting : ramAccountingOfOperation,
+                ramAccountingOfOperation,
                 phase.leftSideColumnTypes,
                 phase.estimatedRowsSizeLeft,
                 phase.estimatedNumberOfRowsLeft,
@@ -896,7 +862,7 @@ public class JobSetup {
                 (byte) 0,
                 phase.leftMergePhase(),
                 joinOperation.leftConsumer(),
-                new BlockBasedRamAccounting(ramAccounting::addBytes, ramAccountingBlockSizeInBytes),
+                new BlockBasedRamAccounting(concurrentRamAccounting::addBytes, ramAccountingBlockSizeInBytes),
                 memoryManager
             );
 
@@ -910,7 +876,7 @@ public class JobSetup {
                 (byte) 1,
                 phase.rightMergePhase(),
                 joinOperation.rightConsumer(),
-                new BlockBasedRamAccounting(ramAccounting::addBytes, ramAccountingBlockSizeInBytes),
+                new BlockBasedRamAccounting(concurrentRamAccounting::addBytes, ramAccountingBlockSizeInBytes),
                 memoryManager
             );
             if (right != null) {
@@ -928,10 +894,7 @@ public class JobSetup {
         @Override
         public Boolean visitHashJoinPhase(HashJoinPhase phase, Context context) {
             CircuitBreaker breaker = breaker();
-            int ramAccountingBlockSizeInBytes = BlockBasedRamAccounting.calculateBlockSizeInBytes(
-                breaker.getLimit(),
-                1
-            );
+            int ramAccountingBlockSizeInBytes = BlockBasedRamAccounting.blockSizeInBytes(breaker.getLimit());
             var ramAccounting = ConcurrentRamAccounting.forCircuitBreaker(phase.label(), breaker);
             var ramAccountingOfOperation = new BlockBasedRamAccounting(
                 ramAccounting::addBytes,
@@ -948,7 +911,7 @@ public class JobSetup {
                 phase.projections(),
                 phase.jobId(),
                 context.txnCtx(),
-                ramAccounting,          // some projectors may account ram concurrently, e.g. fetch
+                ramAccountingOfOperation,
                 memoryManager,
                 projectorFactory
             );
@@ -965,7 +928,7 @@ public class JobSetup {
                 //    96 bytes for each ArrayList +
                 //    7 bytes per key for the IntHashObjectHashMap  (should be 4 but the map pre-allocates more)
                 //    7 bytes perv value (pointer from the map to the list) (should be 4 but the map pre-allocates more)
-                new RowAccountingWithEstimators(phase.leftOutputTypes(), ramAccounting, 110),
+                new RowAccountingWithEstimators(phase.leftOutputTypes(), ramAccountingOfOperation, 110),
                 context.transactionContext,
                 inputFactory,
                 breaker(),

@@ -102,7 +102,7 @@ public class ArrayType<T> extends DataType<List<T>> {
 
     @Override
     public Precedence precedence() {
-        return Precedence.ArrayType;
+        return Precedence.ARRAY;
     }
 
     public final DataType<T> innerType() {
@@ -138,13 +138,13 @@ public class ArrayType<T> extends DataType<List<T>> {
     }
 
     @Override
-    public int compareTo(Object o) {
+    public int compareTo(DataType<?> o) {
         if (!(o instanceof ArrayType)) return -1;
-        return Integer.compare(innerType.id(), ((ArrayType) o).innerType().id());
+        return innerType.compareTo(((ArrayType<?>) o).innerType);
     }
 
     @Override
-    public int compareValueTo(List<T> val1, List<T> val2) {
+    public int compare(List<T> val1, List<T> val2) {
         if (val2 == null) {
             return 1;
         } else if (val1 == null) {
@@ -156,7 +156,7 @@ public class ArrayType<T> extends DataType<List<T>> {
             return -1;
         }
         for (int i = 0; i < val1.size(); i++) {
-            int cmp = innerType.compareValueTo(val1.get(i), val2.get(i));
+            int cmp = innerType.compare(val1.get(i), val2.get(i));
             if (cmp != 0) {
                 return cmp;
             }
@@ -165,10 +165,10 @@ public class ArrayType<T> extends DataType<List<T>> {
     }
 
     @Override
-    public boolean isConvertableTo(DataType other) {
+    public boolean isConvertableTo(DataType<?> other) {
         return other.id() == UndefinedType.ID || other.id() == GeoPointType.ID ||
                ((other instanceof ArrayType)
-                && this.innerType.isConvertableTo(((ArrayType) other).innerType()));
+                && this.innerType.isConvertableTo(((ArrayType<?>) other).innerType()));
     }
 
     @Override

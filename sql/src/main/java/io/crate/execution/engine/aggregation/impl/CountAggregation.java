@@ -21,7 +21,6 @@
 
 package io.crate.execution.engine.aggregation.impl;
 
-import com.google.common.collect.ImmutableList;
 import io.crate.Streamer;
 import io.crate.breaker.RamAccounting;
 import io.crate.data.Input;
@@ -30,13 +29,10 @@ import io.crate.expression.symbol.Function;
 import io.crate.expression.symbol.Literal;
 import io.crate.expression.symbol.Symbol;
 import io.crate.memory.MemoryManager;
-import io.crate.metadata.BaseFunctionResolver;
 import io.crate.metadata.FunctionIdent;
-import io.crate.metadata.FunctionImplementation;
 import io.crate.metadata.FunctionInfo;
 import io.crate.metadata.TransactionContext;
-import io.crate.metadata.functions.params.FuncParams;
-import io.crate.metadata.functions.params.Param;
+import io.crate.metadata.functions.Signature;
 import io.crate.types.DataType;
 import io.crate.types.DataTypes;
 import io.crate.types.FixedWidthType;
@@ -48,6 +44,9 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.List;
 
+import static io.crate.metadata.functions.TypeVariableConstraint.typeVariable;
+import static io.crate.types.TypeSignature.parseTypeSignature;
+
 public class CountAggregation extends AggregationFunction<CountAggregation.LongState, Long> {
 
     public static final String NAME = "count";
@@ -58,31 +57,27 @@ public class CountAggregation extends AggregationFunction<CountAggregation.LongS
         DataTypes.register(CountAggregation.LongStateType.ID, in -> CountAggregation.LongStateType.INSTANCE);
     }
 
-    public static final FunctionInfo COUNT_STAR_FUNCTION = new FunctionInfo(new FunctionIdent(NAME,
-        ImmutableList.of()), DataTypes.LONG, FunctionInfo.Type.AGGREGATE);
+    public static final FunctionInfo COUNT_STAR_FUNCTION = new FunctionInfo(
+        new FunctionIdent(NAME, List.of()), DataTypes.LONG, FunctionInfo.Type.AGGREGATE);
 
     public static void register(AggregationImplModule mod) {
-        mod.register(NAME, new CountAggregationFunctionResolver());
-    }
-
-    private static class CountAggregationFunctionResolver extends BaseFunctionResolver {
-
-        CountAggregationFunctionResolver() {
-            super(FuncParams.builder()
-                .withVarArgs(Param.ANY).limitVarArgOccurrences(1)
-                .build());
-        }
-
-        @Override
-        public FunctionImplementation getForTypes(List<DataType> dataTypes) throws IllegalArgumentException {
-            if (dataTypes.size() == 0) {
-                return new CountAggregation(COUNT_STAR_FUNCTION, false);
-            } else {
-                return new CountAggregation(
-                    new FunctionInfo(new FunctionIdent(NAME, dataTypes),
-                        DataTypes.LONG, FunctionInfo.Type.AGGREGATE), true);
-            }
-        }
+        mod.register(
+            Signature.aggregate(
+                NAME,
+                parseTypeSignature("V"),
+                DataTypes.LONG.getTypeSignature()
+            ).withTypeVariableConstraints(typeVariable("V")),
+            args -> new CountAggregation(
+                new FunctionInfo(
+                    new FunctionIdent(NAME, args),
+                    DataTypes.LONG,
+                    FunctionInfo.Type.AGGREGATE),
+                true)
+        );
+        mod.register(
+            Signature.aggregate(NAME, DataTypes.LONG.getTypeSignature()),
+            args -> new CountAggregation(COUNT_STAR_FUNCTION, false)
+        );
     }
 
     private CountAggregation(FunctionInfo info, boolean hasArgs) {
@@ -126,7 +121,7 @@ public class CountAggregation extends AggregationFunction<CountAggregation.LongS
                 if (((Input) arg).value() == null) {
                     return Literal.of(0L);
                 } else {
-                    return new Function(COUNT_STAR_FUNCTION, ImmutableList.of());
+                    return new Function(COUNT_STAR_FUNCTION, List.of());
                 }
             }
         }
@@ -202,7 +197,7 @@ public class CountAggregation extends AggregationFunction<CountAggregation.LongS
 
         @Override
         public Precedence precedence() {
-            return Precedence.Custom;
+            return Precedence.CUSTOM;
         }
 
         @Override
@@ -221,7 +216,7 @@ public class CountAggregation extends AggregationFunction<CountAggregation.LongS
         }
 
         @Override
-        public int compareValueTo(LongState val1, LongState val2) {
+        public int compare(LongState val1, LongState val2) {
             if (val1 == null) {
                 return -1;
             } else {

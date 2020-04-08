@@ -42,6 +42,10 @@ Unreleased Changes
 Breaking Changes
 ================
 
+- The ``array_unique`` scalar function use a common element type based on the
+  type precedence if given arrays have different element types instead of always
+  casting to the element type of the first array argument.
+
 - Remap CrateDB :ref:`object_data_type` array data type from the PostgreSQL
   JSON to JSON array type. That might effect some drivers that use the
   PostgreSQL wire protocol to insert data into tables with object array typed
@@ -64,6 +68,8 @@ None
 
 Changes
 =======
+
+- Optimized `<column> IS NOT NULL` queries.
 
 - Include the bundled version of ``OpenJDK`` (13.0.2+8) into the ``CrateDB``
   built. It means that ``CrateDB`` doesn't rely the ``JAVA_HOME`` of the host
@@ -157,4 +163,5 @@ Changes
 Fixes
 =====
 
-None
+- Fixed an issue that could lead to incorrect ordering of a result sets if
+  using ``ORDER BY`` on a column of type ``IP`` or on a scalar function.

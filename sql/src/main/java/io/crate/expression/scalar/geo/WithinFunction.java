@@ -21,8 +21,6 @@
 
 package io.crate.expression.scalar.geo;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
 import io.crate.data.Input;
 import io.crate.expression.scalar.ScalarFunctionModule;
 import io.crate.expression.symbol.Function;
@@ -33,6 +31,7 @@ import io.crate.metadata.FunctionIdent;
 import io.crate.metadata.FunctionInfo;
 import io.crate.metadata.Scalar;
 import io.crate.metadata.TransactionContext;
+import io.crate.metadata.functions.Signature;
 import io.crate.types.DataType;
 import io.crate.types.DataTypes;
 import io.crate.types.ObjectType;
@@ -42,37 +41,50 @@ import org.locationtech.spatial4j.shape.Shape;
 import org.locationtech.spatial4j.shape.SpatialRelation;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
+
+import static io.crate.types.TypeSignature.parseTypeSignature;
 
 public class WithinFunction extends Scalar<Boolean, Object> {
 
     public static final String NAME = "within";
 
-    private static final Set<DataType> LEFT_TYPES = ImmutableSet.of(
+    private static final List<DataType<?>> LEFT_TYPES = List.of(
         DataTypes.GEO_POINT,
         DataTypes.GEO_SHAPE,
         ObjectType.untyped(),
-        DataTypes.STRING
+        DataTypes.STRING,
+        DataTypes.UNDEFINED
     );
 
-    private static final Set<DataType> RIGHT_TYPES = ImmutableSet.of(
+    private static final List<DataType<?>> RIGHT_TYPES = List.of(
         DataTypes.GEO_SHAPE,
         ObjectType.untyped(),
-        DataTypes.STRING
+        DataTypes.STRING,
+        DataTypes.UNDEFINED
     );
 
-    public static void register(ScalarFunctionModule scalarFunctionModule) {
-        for (DataType left : LEFT_TYPES) {
-            for (DataType right : RIGHT_TYPES) {
-                scalarFunctionModule.register(new WithinFunction(info(left, right)));
+    public static void register(ScalarFunctionModule module) {
+        for (DataType<?> left : LEFT_TYPES) {
+            for (DataType<?> right : RIGHT_TYPES) {
+                module.register(
+                    Signature.scalar(
+                        NAME,
+                        left.getTypeSignature(),
+                        right.getTypeSignature(),
+                        parseTypeSignature("boolean")
+                    )
+                        .withForbiddenCoercion(),
+                    args -> new WithinFunction(info(left, right))
+                );
             }
         }
     }
 
-    private static FunctionInfo info(DataType pointType, DataType shapeType) {
+    private static FunctionInfo info(DataType<?> pointType, DataType<?> shapeType) {
         return new FunctionInfo(
-            new FunctionIdent(NAME, ImmutableList.of(pointType, shapeType)),
+            new FunctionIdent(NAME, List.of(pointType, shapeType)),
             DataTypes.BOOLEAN
         );
     }

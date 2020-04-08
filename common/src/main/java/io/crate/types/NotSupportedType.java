@@ -43,7 +43,7 @@ public class NotSupportedType extends DataType<Void> {
 
     @Override
     public Precedence precedence() {
-        return Precedence.NotSupportedType;
+        return Precedence.NOT_SUPPORTED;
     }
 
     @Override
@@ -62,12 +62,12 @@ public class NotSupportedType extends DataType<Void> {
     }
 
     @Override
-    public int compareValueTo(Void val1, Void val2) {
+    public int compare(Void val1, Void val2) {
         return 0;
     }
 
     @Override
-    public int compareTo(Object o) {
+    public int compareTo(DataType<?> o) {
         return 0;
     }
 }

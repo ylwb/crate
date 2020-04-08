@@ -29,10 +29,9 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 
-public abstract class DataType<T> implements Comparable, Writeable {
+public abstract class DataType<T> implements Comparable<DataType<?>>, Writeable, Comparator<T> {
 
     /**
      * Type precedence ids which help to decide when a type can be cast
@@ -46,26 +45,28 @@ public abstract class DataType<T> implements Comparable, Writeable {
      *
      */
     public enum Precedence {
-        NotSupportedType,
-        UndefinedType,
-        LiteralType,
-        StringType,
-        ByteType,
-        BooleanType,
-        ShortType,
-        IntegerType,
-        IntervalType,
-        LongType,
-        FloatType,
-        DoubleType,
-        ArrayType,
-        SetType,
-        TableType,
-        GeoPointType,
-        ObjectType,
-        UncheckedObjectType,
-        GeoShapeType,
-        Custom
+        NOT_SUPPORTED,
+        UNDEFINED,
+        LITERAL,
+        STRING,
+        BYTE,
+        BOOLEAN,
+        SHORT,
+        INTEGER,
+        INTERVAL,
+        TIMESTAMP_WITH_TIME_ZONE,
+        TIMESTAMP,
+        LONG,
+        FLOAT,
+        DOUBLE,
+        ARRAY,
+        SET,
+        TABLE,
+        GEO_POINT,
+        OBJECT,
+        UNCHECKED_OBJECT,
+        GEO_SHAPE,
+        CUSTOM
     }
 
     public abstract int id();
@@ -82,8 +83,6 @@ public abstract class DataType<T> implements Comparable, Writeable {
     public abstract Streamer<T> streamer();
 
     public abstract T value(Object value) throws IllegalArgumentException, ClassCastException;
-
-    public abstract int compareValueTo(T val1, T val2);
 
     public TypeSignature getTypeSignature() {
         return new TypeSignature(getName());
@@ -120,19 +119,6 @@ public abstract class DataType<T> implements Comparable, Writeable {
         return possibleConversions.contains(other.id());
     }
 
-    static <T> int nullSafeCompareValueTo(T val1, T val2, Comparator<T> cmp) {
-        if (val1 == null) {
-            if (val2 == null) {
-                return 0;
-            }
-            return -1;
-        }
-        if (val2 == null) {
-            return 1;
-        }
-        return Objects.compare(val1, val2, cmp);
-    }
-
     @Override
     public int hashCode() {
         return id();
@@ -143,14 +129,13 @@ public abstract class DataType<T> implements Comparable, Writeable {
         if (this == o) return true;
         if (!(o instanceof DataType)) return false;
 
-        DataType that = (DataType) o;
+        DataType<?> that = (DataType<?>) o;
         return (id() == that.id());
     }
 
     @Override
-    public int compareTo(Object o) {
-        if (!(o instanceof DataType)) return -1;
-        return Integer.compare(id(), ((DataType) o).id());
+    public int compareTo(DataType<?> o) {
+        return Integer.compare(id(), o.id());
     }
 
     @Override

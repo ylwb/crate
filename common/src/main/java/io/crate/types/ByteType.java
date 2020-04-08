@@ -42,7 +42,7 @@ public class ByteType extends DataType<Byte> implements Streamer<Byte>, FixedWid
 
     @Override
     public Precedence precedence() {
-        return Precedence.ByteType;
+        return Precedence.BYTE;
     }
 
     @Override
@@ -71,13 +71,8 @@ public class ByteType extends DataType<Byte> implements Streamer<Byte>, FixedWid
     }
 
     @Override
-    public int compareValueTo(Byte val1, Byte val2) {
-        return nullSafeCompareValueTo(val1, val2, Byte::compare);
-    }
-
-    @Override
-    public int compareTo(Object o) {
-        return 0;
+    public int compare(Byte val1, Byte val2) {
+        return Byte.compare(val1, val2);
     }
 
     @Override

@@ -44,7 +44,7 @@ public class ShortType extends DataType<Short> implements Streamer<Short>, Fixed
 
     @Override
     public Precedence precedence() {
-        return Precedence.ShortType;
+        return Precedence.SHORT;
     }
 
     @Override
@@ -76,8 +76,8 @@ public class ShortType extends DataType<Short> implements Streamer<Short>, Fixed
     }
 
     @Override
-    public int compareValueTo(Short val1, Short val2) {
-        return nullSafeCompareValueTo(val1, val2, Short::compare);
+    public int compare(Short val1, Short val2) {
+        return Short.compare(val1, val2);
     }
 
     @Override

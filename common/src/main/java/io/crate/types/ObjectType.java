@@ -113,7 +113,7 @@ public class ObjectType extends DataType<Map<String, Object>> implements Streame
 
     @Override
     public Precedence precedence() {
-        return Precedence.ObjectType;
+        return Precedence.OBJECT;
     }
 
     @Override
@@ -161,7 +161,7 @@ public class ObjectType extends DataType<Map<String, Object>> implements Streame
     }
 
     @Override
-    public int compareValueTo(Map<String, Object> val1, Map<String, Object> val2) {
+    public int compare(Map<String, Object> val1, Map<String, Object> val2) {
         return MapComparator.compareMaps(val1, val2);
     }
 
@@ -261,10 +261,13 @@ public class ObjectType extends DataType<Map<String, Object>> implements Streame
     @Override
     public TypeSignature getTypeSignature() {
         ArrayList<TypeSignature> parameters = new ArrayList<>(innerTypes.size() * 2);
-        for (var type : innerTypes.values()) {
+        for (var innerTypeKeyValue : innerTypes.entrySet()) {
             // all keys are of type 'text'
             parameters.add(StringType.INSTANCE.getTypeSignature());
-            parameters.add(type.getTypeSignature());
+
+            var innerType = innerTypeKeyValue.getValue();
+            parameters.add(
+                new ObjectParameterTypeSignature(innerTypeKeyValue.getKey(), innerType.getTypeSignature()));
         }
         return new TypeSignature(NAME, parameters);
     }

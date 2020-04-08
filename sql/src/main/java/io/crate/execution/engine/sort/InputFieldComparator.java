@@ -24,52 +24,52 @@ package io.crate.execution.engine.sort;
 
 import io.crate.data.Input;
 import io.crate.expression.reference.doc.lucene.LuceneCollectorExpression;
-import io.crate.types.DataType;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.FieldComparator;
 import org.apache.lucene.search.LeafFieldComparator;
 import org.apache.lucene.search.Scorable;
-import javax.annotation.Nullable;
 
+import javax.annotation.Nullable;
 import java.io.IOException;
+import java.util.Comparator;
+import java.util.List;
 
 /**
  * Comparator for sorting on generic Inputs (Scalar Functions mostly)
  */
-class InputFieldComparator extends FieldComparator implements LeafFieldComparator {
+class InputFieldComparator extends FieldComparator<Object> implements LeafFieldComparator {
 
     private final Object[] values;
-    private final Input input;
-    private final Iterable<? extends LuceneCollectorExpression<?>> collectorExpressions;
+    private final Input<?> input;
+    private final List<? extends LuceneCollectorExpression<?>> collectorExpressions;
+    private final Comparator<Object> comparator;
     private final @Nullable Object missingValue;
-    private final DataType valueType;
     private Object bottom;
     private Object top;
 
     InputFieldComparator(int numHits,
-                         Iterable<? extends LuceneCollectorExpression<?>> collectorExpressions,
-                         Input input,
-                         DataType valueType,
+                         List<? extends LuceneCollectorExpression<?>> collectorExpressions,
+                         Input<?> input,
+                         Comparator<Object> comparator,
                          @Nullable Object missingValue) {
         this.collectorExpressions = collectorExpressions;
+        this.comparator = comparator;
         this.missingValue = missingValue;
-        this.valueType = valueType;
         this.values = new Object[numHits];
         this.input = input;
     }
 
     @Override
     public LeafFieldComparator getLeafComparator(LeafReaderContext context) throws IOException {
-        for (LuceneCollectorExpression collectorExpression : collectorExpressions) {
-            collectorExpression.setNextReader(context);
+        for (int i = 0; i < collectorExpressions.size(); i++) {
+            collectorExpressions.get(i).setNextReader(context);
         }
         return this;
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public int compare(int slot1, int slot2) {
-        return valueType.compareValueTo(values[slot1], values[slot2]);
+        return comparator.compare(values[slot1], values[slot2]);
     }
 
     @Override
@@ -82,13 +82,12 @@ class InputFieldComparator extends FieldComparator implements LeafFieldComparato
         top = value;
     }
 
-    @SuppressWarnings("unchecked")
     @Override
     public int compareBottom(int doc) throws IOException {
-        for (LuceneCollectorExpression collectorExpression : collectorExpressions) {
-            collectorExpression.setNextDocId(doc);
+        for (int i = 0; i < collectorExpressions.size(); i++) {
+            collectorExpressions.get(i).setNextDocId(doc);
         }
-        return valueType.compareValueTo(bottom, getFirstNonNullOrNull(input.value(), missingValue));
+        return comparator.compare(bottom, getFirstNonNullOrNull(input.value(), missingValue));
     }
 
     @Nullable
@@ -100,19 +99,18 @@ class InputFieldComparator extends FieldComparator implements LeafFieldComparato
         }
     }
 
-    @SuppressWarnings("unchecked")
     @Override
     public int compareTop(int doc) throws IOException {
-        for (LuceneCollectorExpression collectorExpression : collectorExpressions) {
-            collectorExpression.setNextDocId(doc);
+        for (int i = 0; i < collectorExpressions.size(); i++) {
+            collectorExpressions.get(i).setNextDocId(doc);
         }
-        return valueType.compareValueTo(top, getFirstNonNullOrNull(input.value(), missingValue));
+        return comparator.compare(top, getFirstNonNullOrNull(input.value(), missingValue));
     }
 
     @Override
     public void copy(int slot, int doc) throws IOException {
-        for (LuceneCollectorExpression collectorExpression : collectorExpressions) {
-            collectorExpression.setNextDocId(doc);
+        for (int i = 0; i < collectorExpressions.size(); i++) {
+            collectorExpressions.get(i).setNextDocId(doc);
         }
         Object value = input.value();
         if (value == null) {

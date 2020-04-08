@@ -51,7 +51,7 @@ public class BooleanType extends DataType<Boolean> implements Streamer<Boolean>,
 
     @Override
     public Precedence precedence() {
-        return Precedence.BooleanType;
+        return Precedence.BOOLEAN;
     }
 
     @Override
@@ -96,8 +96,8 @@ public class BooleanType extends DataType<Boolean> implements Streamer<Boolean>,
     }
 
     @Override
-    public int compareValueTo(Boolean val1, Boolean val2) {
-        return nullSafeCompareValueTo(val1, val2, Boolean::compare);
+    public int compare(Boolean val1, Boolean val2) {
+        return Boolean.compare(val1, val2);
     }
 
     @Override

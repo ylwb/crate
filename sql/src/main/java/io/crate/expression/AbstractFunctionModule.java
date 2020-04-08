@@ -27,13 +27,17 @@ import io.crate.metadata.FunctionIdent;
 import io.crate.metadata.FunctionImplementation;
 import io.crate.metadata.FunctionName;
 import io.crate.metadata.FunctionResolver;
+import io.crate.metadata.functions.Signature;
+import io.crate.types.DataType;
 import org.elasticsearch.common.inject.AbstractModule;
 import org.elasticsearch.common.inject.TypeLiteral;
 import org.elasticsearch.common.inject.multibindings.MapBinder;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 public abstract class AbstractFunctionModule<T extends FunctionImplementation> extends AbstractModule {
 
@@ -45,16 +49,32 @@ public abstract class AbstractFunctionModule<T extends FunctionImplementation> e
     private HashMap<FunctionName, List<FuncResolver>> functionImplementations = new HashMap<>();
     private MapBinder<FunctionName, List<FuncResolver>> implementationsBinder;
 
+    /**
+     * @deprecated Use {@link #register(Signature, Function)} instead.
+     */
     public void register(T impl) {
         functions.put(impl.info().ident(), impl);
     }
 
+    /**
+     * @deprecated Use {@link #register(Signature, Function)} instead.
+     */
     public void register(String name, FunctionResolver functionResolver) {
         register(new FunctionName(name), functionResolver);
     }
 
+    /**
+     * @deprecated Use {@link #register(Signature, Function)} instead.
+     */
     public void register(FunctionName qualifiedName, FunctionResolver functionResolver) {
         resolver.put(qualifiedName, functionResolver);
+    }
+
+    public void register(Signature signature, Function<List<DataType>, FunctionImplementation> factory) {
+        List<FuncResolver> functions = functionImplementations.computeIfAbsent(
+            signature.getName(),
+            k -> new ArrayList<>());
+        functions.add(new FuncResolver(signature, factory));
     }
 
     public abstract void configureFunctions();

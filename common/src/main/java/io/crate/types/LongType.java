@@ -41,7 +41,7 @@ public class LongType extends DataType<Long> implements FixedWidthType, Streamer
 
     @Override
     public Precedence precedence() {
-        return Precedence.LongType;
+        return Precedence.LONG;
     }
 
     @Override
@@ -69,8 +69,8 @@ public class LongType extends DataType<Long> implements FixedWidthType, Streamer
     }
 
     @Override
-    public int compareValueTo(Long val1, Long val2) {
-        return nullSafeCompareValueTo(val1, val2, Long::compare);
+    public int compare(Long val1, Long val2) {
+        return Long.compare(val1, val2);
     }
 
     @Override

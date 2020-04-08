@@ -43,7 +43,7 @@ public class UndefinedType extends DataType<Object> implements Streamer<Object> 
 
     @Override
     public Precedence precedence() {
-        return Precedence.UndefinedType;
+        return Precedence.UNDEFINED;
     }
 
     @Override
@@ -67,7 +67,7 @@ public class UndefinedType extends DataType<Object> implements Streamer<Object> 
     }
 
     @Override
-    public int compareValueTo(Object val1, Object val2) {
+    public int compare(Object val1, Object val2) {
         return 0;
     }
 

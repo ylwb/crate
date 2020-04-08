@@ -88,7 +88,7 @@ public class CastFunctionTest extends AbstractScalarFunctionsTest {
     public void test_cannot_cast_text_to_object_array() {
         expectedException.expect(ConversionException.class);
         expectedException.expectMessage("Cannot cast expressions from type `text` to type `object_array`");
-        assertEvaluate("cast(name as array(object))", null);
+        assertEvaluate("cast(name as array(object))", "");
     }
 
     @Test
@@ -189,7 +189,7 @@ public class CastFunctionTest extends AbstractScalarFunctionsTest {
         //noinspection unchecked
         var geoShapes = (List<Map<String, Object>>) ((Literal) funcSymbol).value();
         assertThat(
-            GEO_SHAPE.compareValueTo(
+            GEO_SHAPE.compare(
                 geoShapes.get(0),
                 Map.of(
                     GeoJSONUtils.TYPE_FIELD, GeoJSONUtils.POINT,

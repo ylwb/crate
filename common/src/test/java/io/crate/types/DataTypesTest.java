@@ -21,19 +21,18 @@
 
 package io.crate.types;
 
-import static io.crate.types.DataTypes.compareTypesById;
-import static org.hamcrest.Matchers.instanceOf;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.core.IsNot.not;
+import io.crate.test.integration.CrateUnitTest;
+import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-import org.junit.Test;
-
-import io.crate.test.integration.CrateUnitTest;
+import static io.crate.types.DataTypes.compareTypesById;
+import static org.hamcrest.Matchers.instanceOf;
+import static org.hamcrest.Matchers.is;
 import static org.hamcrest.core.IsNot.not;
 
 public class DataTypesTest extends CrateUnitTest {
@@ -138,16 +137,16 @@ public class DataTypesTest extends CrateUnitTest {
         Map emptyMap = Map.of();
         DataType objectType = ObjectType.untyped();
 
-        assertThat(objectType.compareValueTo(testMap, testMapCopy), is(0));
-        assertThat(objectType.compareValueTo(testMapCopy, testMap), is(0));
+        assertThat(objectType.compare(testMap, testMapCopy), is(0));
+        assertThat(objectType.compare(testMapCopy, testMap), is(0));
 
         // first number of argument is checked
-        assertThat(objectType.compareValueTo(testMap, emptyMap), is(1));
-        assertThat(objectType.compareValueTo(emptyMap, testMap), is(-1));
+        assertThat(objectType.compare(testMap, emptyMap), is(1));
+        assertThat(objectType.compare(emptyMap, testMap), is(-1));
 
         // then values
-        assertThat(objectType.compareValueTo(testMap, testCompareMap), is(1));
-        assertThat(objectType.compareValueTo(testCompareMap, testMap), is(1));
+        assertThat(objectType.compare(testMap, testCompareMap), is(1));
+        assertThat(objectType.compare(testCompareMap, testMap), is(1));
     }
 
     @Test
@@ -331,6 +330,10 @@ public class DataTypesTest extends CrateUnitTest {
     }
 
     private static void assertCompareValueTo(DataType dt, Object val1, Object val2, int expected) {
-        assertThat(dt.compareValueTo(dt.value(val1), dt.value(val2)), is(expected));
+        if (val1 == null || val2 == null) {
+            assertThat(Comparator.nullsFirst(dt).compare(dt.value(val1), dt.value(val2)), is(expected));
+        } else {
+            assertThat(dt.compare(dt.value(val1), dt.value(val2)), is(expected));
+        }
     }
 }

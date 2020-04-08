@@ -24,42 +24,55 @@ package io.crate.expression.scalar.timestamp;
 
 import io.crate.data.Input;
 import io.crate.expression.scalar.ScalarFunctionModule;
-import io.crate.metadata.BaseFunctionResolver;
 import io.crate.metadata.FunctionIdent;
-import io.crate.metadata.FunctionImplementation;
 import io.crate.metadata.FunctionInfo;
 import io.crate.metadata.Scalar;
 import io.crate.metadata.TransactionContext;
-import io.crate.metadata.functions.params.FuncParams;
-import io.crate.metadata.functions.params.Param;
-import io.crate.types.DataType;
+import io.crate.metadata.functions.Signature;
 import io.crate.types.DataTypes;
-import io.crate.types.TimestampType;
 
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.util.List;
 import java.util.Locale;
 
 public class TimezoneFunction extends Scalar<Long, Object> {
 
     public static final String NAME = "timezone";
     private static final ZoneId UTC = ZoneId.of("UTC");
-    private static final FuncParams FUNCTION_PARAMS = FuncParams.builder(Param.STRING,
-                                                                         Param.of(DataTypes.TIMESTAMPZ,
-                                                                                  DataTypes.TIMESTAMP)).build();
 
     public static void register(ScalarFunctionModule module) {
-        module.register(NAME, new BaseFunctionResolver(FUNCTION_PARAMS) {
-            @Override
-            public FunctionImplementation getForTypes(List<DataType> signatureTypes) throws IllegalArgumentException {
-                DataType returnType =
-                    signatureTypes.get(1).id() == TimestampType.ID_WITH_TZ ? DataTypes.TIMESTAMP : DataTypes.TIMESTAMPZ;
-                return new TimezoneFunction(new FunctionInfo(new FunctionIdent(NAME, signatureTypes), returnType));
-            }
-        });
+        module.register(
+            Signature.scalar(
+                NAME,
+                DataTypes.STRING.getTypeSignature(),
+                DataTypes.TIMESTAMPZ.getTypeSignature(),
+                DataTypes.TIMESTAMP.getTypeSignature()
+            ),
+            argumentTypes ->
+                new TimezoneFunction(new FunctionInfo(new FunctionIdent(NAME, argumentTypes), DataTypes.TIMESTAMP))
+        );
+        module.register(
+            Signature.scalar(
+                NAME,
+                DataTypes.STRING.getTypeSignature(),
+                DataTypes.TIMESTAMP.getTypeSignature(),
+                DataTypes.TIMESTAMPZ.getTypeSignature()
+            ),
+            argumentTypes ->
+                new TimezoneFunction(new FunctionInfo(new FunctionIdent(NAME, argumentTypes), DataTypes.TIMESTAMPZ))
+        );
+        module.register(
+            Signature.scalar(
+                NAME,
+                DataTypes.STRING.getTypeSignature(),
+                DataTypes.LONG.getTypeSignature(),
+                DataTypes.TIMESTAMPZ.getTypeSignature()
+            ),
+            argumentTypes ->
+                new TimezoneFunction(new FunctionInfo(new FunctionIdent(NAME, argumentTypes), DataTypes.TIMESTAMPZ))
+        );
     }
 
     private final FunctionInfo info;

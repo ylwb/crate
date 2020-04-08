@@ -24,71 +24,75 @@ package io.crate.expression.scalar.arithmetic;
 
 import io.crate.expression.scalar.ScalarFunctionModule;
 import io.crate.expression.scalar.UnaryScalar;
-import io.crate.expression.symbol.FuncArg;
-import io.crate.expression.symbol.Function;
-import io.crate.expression.symbol.Symbol;
-import io.crate.metadata.FunctionIdent;
-import io.crate.metadata.FunctionImplementation;
-import io.crate.metadata.FunctionInfo;
-import io.crate.metadata.FunctionResolver;
-import io.crate.metadata.functions.params.FuncParams;
-import io.crate.metadata.functions.params.Param;
+import io.crate.metadata.functions.Signature;
 import io.crate.types.DataType;
-import io.crate.types.DoubleType;
-import io.crate.types.FloatType;
-import io.crate.types.IntegerType;
-import io.crate.types.LongType;
-import io.crate.types.ShortType;
 
-import javax.annotation.Nullable;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import static io.crate.types.TypeSignature.parseTypeSignature;
 
 public final class NegateFunctions {
 
-    private static final String NAME = "_negate";
-
-    private static final FunctionResolver RESOLVER = new FunctionResolver() {
-
-        private final FuncParams funcParams = FuncParams.builder(Param.NUMERIC).build();
-
-        @Override
-        public FunctionImplementation getForTypes(List<DataType> dataTypes) throws IllegalArgumentException {
-            DataType dataType = dataTypes.get(0);
-            switch (dataType.id()) {
-                case DoubleType.ID:
-                    return new UnaryScalar<Double, Double>(NAME, dataType, dataType, x -> x * -1);
-                case FloatType.ID:
-                    return new UnaryScalar<Float, Float>(NAME, dataType, dataType, x -> x * -1);
-                case ShortType.ID:
-                    return new UnaryScalar<Short, Short>(NAME, dataType, dataType, x -> (short) (x * -1));
-                case IntegerType.ID:
-                    return new UnaryScalar<Integer, Integer>(NAME, dataType, dataType, x -> x * -1);
-                case LongType.ID:
-                    return new UnaryScalar<Long, Long>(NAME, dataType, dataType, x -> x * -1);
-                default:
-                    throw new IllegalArgumentException("Cannot negate values of type " + dataType.getName());
-            }
-        }
-
-        @Nullable
-        @Override
-        public List<DataType> getSignature(List<? extends FuncArg> dataTypes) {
-            return funcParams.match(dataTypes);
-        }
-    };
+    public static final String NAME = "_negate";
 
     public static void register(ScalarFunctionModule module) {
-        module.register(NAME, RESOLVER);
-    }
-
-    public static Function createFunction(Symbol argument) {
-        FunctionInfo info = new FunctionInfo(
-            new FunctionIdent(NAME, Collections.singletonList(argument.valueType())),
-            argument.valueType()
+        module.register(
+            Signature.scalar(
+                NAME,
+                parseTypeSignature("double precision"),
+                parseTypeSignature("double precision")
+            )
+                .withForbiddenCoercion(),
+            argumentTypes -> {
+                DataType<?> dataType = argumentTypes.get(0);
+                return new UnaryScalar<Double, Double>(NAME, dataType, dataType, x -> x * -1);
+            }
         );
-        //noinspection ArraysAsListWithZeroOrOneArgument # must use mutable list for arguments
-        return new Function(info, Arrays.asList(argument));
+        module.register(
+            Signature.scalar(
+                NAME,
+                parseTypeSignature("float"),
+                parseTypeSignature("float")
+            )
+                .withForbiddenCoercion(),
+            argumentTypes -> {
+                DataType<?> dataType = argumentTypes.get(0);
+                return new UnaryScalar<Float, Float>(NAME, dataType, dataType, x -> x * -1);
+            }
+        );
+        module.register(
+            Signature.scalar(
+                NAME,
+                parseTypeSignature("integer"),
+                parseTypeSignature("integer")
+            )
+                .withForbiddenCoercion(),
+            argumentTypes -> {
+                DataType<?> dataType = argumentTypes.get(0);
+                return new UnaryScalar<Integer, Integer>(NAME, dataType, dataType, x -> x * -1);
+            }
+        );
+        module.register(
+            Signature.scalar(
+                NAME,
+                parseTypeSignature("bigint"),
+                parseTypeSignature("bigint")
+            )
+                .withForbiddenCoercion(),
+            argumentTypes -> {
+                DataType<?> dataType = argumentTypes.get(0);
+                return new UnaryScalar<Long, Long>(NAME, dataType, dataType, x -> x * -1);
+            }
+        );
+        module.register(
+            Signature.scalar(
+                NAME,
+                parseTypeSignature("smallint"),
+                parseTypeSignature("smallint")
+            )
+                .withForbiddenCoercion(),
+            argumentTypes -> {
+                DataType<?> dataType = argumentTypes.get(0);
+                return new UnaryScalar<Short, Short>(NAME, dataType, dataType, x -> (short) (x * -1));
+            }
+        );
     }
 }

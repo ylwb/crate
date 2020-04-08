@@ -44,7 +44,7 @@ public class FloatType extends DataType<Float> implements Streamer<Float>, Fixed
 
     @Override
     public Precedence precedence() {
-        return Precedence.FloatType;
+        return Precedence.FLOAT;
     }
 
     @Override
@@ -76,8 +76,8 @@ public class FloatType extends DataType<Float> implements Streamer<Float>, Fixed
     }
 
     @Override
-    public int compareValueTo(Float val1, Float val2) {
-        return nullSafeCompareValueTo(val1, val2, Float::compare);
+    public int compare(Float val1, Float val2) {
+        return Float.compare(val1, val2);
     }
 
     @Override

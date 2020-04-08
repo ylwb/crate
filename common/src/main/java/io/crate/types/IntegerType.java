@@ -44,7 +44,7 @@ public class IntegerType extends DataType<Integer> implements Streamer<Integer>,
 
     @Override
     public Precedence precedence() {
-        return Precedence.IntegerType;
+        return Precedence.INTEGER;
     }
 
     @Override
@@ -77,8 +77,8 @@ public class IntegerType extends DataType<Integer> implements Streamer<Integer>,
     }
 
     @Override
-    public int compareValueTo(Integer val1, Integer val2) {
-        return nullSafeCompareValueTo(val1, val2, Integer::compare);
+    public int compare(Integer val1, Integer val2) {
+        return Integer.compare(val1, val2);
     }
 
     @Override

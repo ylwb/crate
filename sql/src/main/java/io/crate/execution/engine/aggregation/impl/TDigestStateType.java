@@ -54,7 +54,7 @@ class TDigestStateType extends DataType<TDigestState> implements Streamer<TDiges
 
     @Override
     public Precedence precedence() {
-        return Precedence.Custom;
+        return Precedence.CUSTOM;
     }
 
     @Override
@@ -73,7 +73,7 @@ class TDigestStateType extends DataType<TDigestState> implements Streamer<TDiges
     }
 
     @Override
-    public int compareValueTo(TDigestState val1, TDigestState val2) {
+    public int compare(TDigestState val1, TDigestState val2) {
         return 0;
     }
 }

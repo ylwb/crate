@@ -30,6 +30,7 @@ import io.crate.execution.engine.aggregation.AggregationFunction;
 import io.crate.memory.MemoryManager;
 import io.crate.metadata.FunctionIdent;
 import io.crate.metadata.FunctionInfo;
+import io.crate.metadata.functions.Signature;
 import io.crate.types.DataType;
 import io.crate.types.DataTypes;
 import org.elasticsearch.Version;
@@ -48,8 +49,9 @@ import java.util.List;
  */
 public final class StringAgg extends AggregationFunction<StringAgg.StringAggState, String> {
 
+    private static final String NAME = "string_agg";
     private static final FunctionInfo INFO = new FunctionInfo(
-        new FunctionIdent("string_agg", List.of(DataTypes.STRING, DataTypes.STRING)),
+        new FunctionIdent(NAME, List.of(DataTypes.STRING, DataTypes.STRING)),
         DataTypes.STRING,
         FunctionInfo.Type.AGGREGATE
     );
@@ -61,7 +63,14 @@ public final class StringAgg extends AggregationFunction<StringAgg.StringAggStat
     }
 
     public static void register(AggregationImplModule mod) {
-        mod.register(new StringAgg());
+        mod.register(
+            Signature.aggregate(
+                NAME,
+                DataTypes.STRING.getTypeSignature(),
+                DataTypes.STRING.getTypeSignature(),
+                DataTypes.STRING.getTypeSignature()),
+            args -> new StringAgg()
+        );
     }
 
     static class StringAggState implements Writeable {
@@ -96,7 +105,7 @@ public final class StringAgg extends AggregationFunction<StringAgg.StringAggStat
 
         @Override
         public Precedence precedence() {
-            return Precedence.Custom;
+            return Precedence.CUSTOM;
         }
 
         @Override
@@ -115,7 +124,7 @@ public final class StringAgg extends AggregationFunction<StringAgg.StringAggStat
         }
 
         @Override
-        public int compareValueTo(StringAggState val1, StringAggState val2) {
+        public int compare(StringAggState val1, StringAggState val2) {
             return 0;
         }
 

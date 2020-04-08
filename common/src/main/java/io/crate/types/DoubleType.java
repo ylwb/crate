@@ -44,7 +44,7 @@ public class DoubleType extends DataType<Double> implements FixedWidthType, Stre
 
     @Override
     public Precedence precedence() {
-        return Precedence.DoubleType;
+        return Precedence.DOUBLE;
     }
 
     @Override
@@ -72,8 +72,8 @@ public class DoubleType extends DataType<Double> implements FixedWidthType, Stre
     }
 
     @Override
-    public int compareValueTo(Double val1, Double val2) {
-        return nullSafeCompareValueTo(val1, val2, Double::compare);
+    public int compare(Double val1, Double val2) {
+        return Double.compare(val1, val2);
     }
 
     @Override

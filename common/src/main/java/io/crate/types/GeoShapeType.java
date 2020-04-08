@@ -48,7 +48,7 @@ public class GeoShapeType extends DataType<Map<String, Object>> implements Strea
 
     @Override
     public Precedence precedence() {
-        return Precedence.GeoShapeType;
+        return Precedence.GEO_SHAPE;
     }
 
     @Override
@@ -89,7 +89,7 @@ public class GeoShapeType extends DataType<Map<String, Object>> implements Strea
 
 
     @Override
-    public int compareValueTo(Map<String, Object> val1, Map<String, Object> val2) {
+    public int compare(Map<String, Object> val1, Map<String, Object> val2) {
         // TODO: compare without converting to shape
         Shape shape1 = GeoJSONUtils.map2Shape(val1);
         Shape shape2 = GeoJSONUtils.map2Shape(val2);

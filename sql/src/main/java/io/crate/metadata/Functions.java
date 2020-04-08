@@ -27,29 +27,42 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
 import io.crate.common.collections.Lists2;
 import io.crate.expression.symbol.FuncArg;
+import io.crate.metadata.functions.BoundVariables;
 import io.crate.metadata.functions.Signature;
 import io.crate.metadata.functions.SignatureBinder;
 import io.crate.metadata.functions.params.FuncParams;
 import io.crate.types.DataType;
+import io.crate.types.DataTypes;
 import io.crate.types.TypeSignature;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.collect.Tuple;
 import org.elasticsearch.common.inject.Inject;
+import org.elasticsearch.common.logging.Loggers;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
+
+import static io.crate.common.collections.Lists2.getOnlyElement;
 
 public class Functions {
 
+    private static final Logger LOGGER = Loggers.getLogger(Functions.class);
+
     private final Map<FunctionName, FunctionResolver> functionResolvers;
-    private final Map<FunctionName, FunctionResolver> udfResolvers = new ConcurrentHashMap<>();
+    private final Map<FunctionName, List<FuncResolver>> udfFunctionImplementations = new ConcurrentHashMap<>();
     private final Map<FunctionName, List<FuncResolver>> functionImplementations;
 
     @Inject
@@ -70,10 +83,9 @@ public class Functions {
         return functionResolvers;
     }
 
-    public Map<FunctionName, FunctionResolver> udfFunctionResolvers() {
-        return udfResolvers;
+    public Map<FunctionName, List<FuncResolver>> udfFunctionResolvers() {
+        return udfFunctionImplementations;
     }
-
 
     private Map<FunctionName, FunctionResolver> generateFunctionResolvers(Map<FunctionIdent, FunctionImplementation> functionImplementations) {
         Multimap<FunctionName, Tuple<FunctionIdent, FunctionImplementation>> signatures = getSignatures(functionImplementations);
@@ -90,7 +102,7 @@ public class Functions {
      *         FunctionIdent and FunctionImplementation as value.
      */
     private Multimap<FunctionName, Tuple<FunctionIdent, FunctionImplementation>> getSignatures(
-            Map<FunctionIdent, FunctionImplementation> functionImplementations) {
+        Map<FunctionIdent, FunctionImplementation> functionImplementations) {
         Multimap<FunctionName, Tuple<FunctionIdent, FunctionImplementation>> signatureMap = ArrayListMultimap.create();
         for (Map.Entry<FunctionIdent, FunctionImplementation> entry : functionImplementations.entrySet()) {
             signatureMap.put(entry.getKey().fqnName(), new Tuple<>(entry.getKey(), entry.getValue()));
@@ -98,23 +110,20 @@ public class Functions {
         return signatureMap;
     }
 
-    public void registerUdfResolversForSchema(String schema, Map<FunctionIdent, FunctionImplementation> functions) {
+    public void registerUdfFunctionImplementationsForSchema(
+        String schema, Map<FunctionName, List<FuncResolver>> functions) {
         // remove deleted ones before re-registering all current ones for the given schema
-        Map<FunctionName, FunctionResolver> currentFunctions = generateFunctionResolvers(functions);
-        for (FunctionName functionName : udfResolvers.keySet()) {
-            if (schema.equals(functionName.schema()) && currentFunctions.get(functionName) == null) {
-                udfResolvers.remove(functionName);
-            }
-        }
-        udfResolvers.putAll(currentFunctions);
+        udfFunctionImplementations.entrySet()
+            .removeIf(
+                function ->
+                    schema.equals(function.getKey().schema())
+                    && functions.get(function.getKey()) == null);
+        udfFunctionImplementations.putAll(functions);
     }
 
     public void deregisterUdfResolversForSchema(String schema) {
-        for (FunctionName functionName : udfResolvers.keySet()) {
-            if (schema.equals(functionName.schema())) {
-                udfResolvers.remove(functionName);
-            }
-        }
+        udfFunctionImplementations.keySet()
+            .removeIf(function -> schema.equals(function.schema()));
     }
 
     /**
@@ -168,7 +177,8 @@ public class Functions {
         FunctionImplementation impl = resolveFunctionBySignature(
             functionName,
             dataTypes,
-            SearchPath.pathWithPGCatalogAndDoc()
+            SearchPath.pathWithPGCatalogAndDoc(),
+            functionImplementations::get
         );
         if (impl != null) {
             return impl;
@@ -197,7 +207,8 @@ public class Functions {
         FunctionImplementation impl = resolveFunctionBySignature(
             functionName,
             Lists2.map(argumentsTypes, FuncArg::valueType),
-            searchPath
+            searchPath,
+            functionImplementations::get
         );
         if (impl != null) {
             return impl;
@@ -213,12 +224,13 @@ public class Functions {
     @Nullable
     private FunctionImplementation resolveFunctionBySignature(FunctionName name,
                                                               List<DataType> arguments,
-                                                              SearchPath searchPath) {
-        var candidates = functionImplementations.get(name);
+                                                              SearchPath searchPath,
+                                                              Function<FunctionName, List<FuncResolver>> lookupFunction) {
+        var candidates = lookupFunction.apply(name);
         if (candidates == null && name.schema() == null) {
             for (String pathSchema : searchPath) {
                 FunctionName searchPathFunctionName = new FunctionName(pathSchema, name.name());
-                candidates = functionImplementations.get(searchPathFunctionName);
+                candidates = lookupFunction.apply(searchPathFunctionName);
                 if (candidates != null) {
                     break;
                 }
@@ -226,7 +238,7 @@ public class Functions {
         }
         if (candidates != null) {
             // First lets try exact candidates, no generic type variables, no coercion allowed.
-            List<FuncResolver> exactCandidates = candidates.stream()
+            var exactCandidates = candidates.stream()
                 .filter(function -> function.getSignature().getTypeVariableConstraints().isEmpty())
                 .collect(Collectors.toList());
             var match = matchFunctionCandidates(exactCandidates, arguments, false);
@@ -235,7 +247,7 @@ public class Functions {
             }
 
             // Second, try candidates with generic type variables, still no coercion allowed.
-            List<FuncResolver> genericCandidates = candidates.stream()
+            var genericCandidates = candidates.stream()
                 .filter(function -> !function.getSignature().getTypeVariableConstraints().isEmpty())
                 .collect(Collectors.toList());
             match = matchFunctionCandidates(genericCandidates, arguments, false);
@@ -243,8 +255,11 @@ public class Functions {
                 return match;
             }
 
-            // Last, try all candidates with coercion allowed.
-            return matchFunctionCandidates(candidates, arguments, true);
+            // Last, try all candidates which allow coercion.
+            var candidatesAllowingCoercion = candidates.stream()
+                .filter(function -> function.getSignature().isCoercionAllowed())
+                .collect(Collectors.toList());
+            return matchFunctionCandidates(candidatesAllowingCoercion, arguments, true);
         }
         return null;
     }
@@ -253,13 +268,38 @@ public class Functions {
     private static FunctionImplementation matchFunctionCandidates(List<FuncResolver> candidates,
                                                                   List<DataType> argumentTypes,
                                                                   boolean allowCoercion) {
+        List<ApplicableFunction> applicableFunctions = new ArrayList<>();
         for (FuncResolver candidate : candidates) {
             Signature boundSignature = new SignatureBinder(candidate.getSignature(), allowCoercion)
-                .bind(argumentTypes);
+                .bind(Lists2.map(argumentTypes, DataType::getTypeSignature));
             if (boundSignature != null) {
-                return candidate.apply(Lists2.map(boundSignature.getArgumentTypes(), TypeSignature::createType));
+                applicableFunctions.add(
+                    new ApplicableFunction(
+                        candidate.getSignature(),
+                        boundSignature,
+                        candidate.getFactory()
+                    )
+                );
             }
         }
+
+
+        if (allowCoercion) {
+            applicableFunctions = selectMostSpecificFunctions(applicableFunctions, argumentTypes);
+            if (LOGGER.isDebugEnabled() && applicableFunctions.isEmpty()) {
+                LOGGER.debug("At least single function must be left after selecting most specific one");
+            }
+        }
+
+        if (applicableFunctions.size() == 1) {
+            return getOnlyElement(applicableFunctions).get();
+        }
+        if (applicableFunctions.size() > 1) {
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("Multiple candidates match! " + applicableFunctions);
+            }
+        }
+
         return null;
     }
 
@@ -274,11 +314,12 @@ public class Functions {
     @Nullable
     private FunctionImplementation getUserDefined(FunctionName functionName,
                                                   List<DataType> argTypes) throws UnsupportedOperationException {
-        FunctionResolver resolver = udfResolvers.get(functionName);
-        if (resolver == null) {
-            return null;
-        }
-        return resolver.getForTypes(argTypes);
+        return resolveFunctionBySignature(
+            functionName,
+            argTypes,
+            SearchPath.pathWithPGCatalogAndDoc(),
+            udfFunctionImplementations::get
+        );
     }
 
     /**
@@ -286,20 +327,21 @@ public class Functions {
      * The types may be cast to match the built-in argument types.
      *
      * @param functionName The full qualified function name.
-     * @param arguments The function arguments.
+     * @param argumentsTypes The function arguments.
      * @param searchPath The {@link SearchPath} against which to try to resolve the function if it is not identified by
      *                   a fully qualifed name (ie. `schema.functionName`)
      * @return a function implementation.
      */
     @Nullable
     private FunctionImplementation resolveUserDefinedByArgs(FunctionName functionName,
-                                                            List<? extends FuncArg> arguments,
+                                                            List<? extends FuncArg> argumentsTypes,
                                                             SearchPath searchPath) throws UnsupportedOperationException {
-        FunctionResolver resolver = lookupFunctionResolver(functionName, searchPath, udfResolvers::get);
-        if (resolver == null) {
-            return null;
-        }
-        return resolveFunctionForArgumentTypes(arguments, resolver);
+        return resolveFunctionBySignature(
+            functionName,
+            Lists2.map(argumentsTypes, FuncArg::valueType),
+            searchPath,
+            udfFunctionImplementations::get
+        );
     }
 
     @Nullable
@@ -388,6 +430,130 @@ public class Functions {
                 }
             }
             return null;
+        }
+    }
+
+    private static List<ApplicableFunction> selectMostSpecificFunctions(List<ApplicableFunction> applicableFunctions,
+                                                                        List<DataType> argumentTypes) {
+        if (applicableFunctions.isEmpty()) {
+            return applicableFunctions;
+        }
+
+        List<ApplicableFunction> mostSpecificFunctions = selectMostSpecificFunctions(applicableFunctions);
+        if (mostSpecificFunctions.size() <= 1) {
+            return mostSpecificFunctions;
+        }
+
+        // If the return type for all the selected function is the same
+        // all the functions are semantically the same. We can return just any of those.
+        //
+        // Second, if all given arguments are UNDEFINED, we also return the first one.
+        // This may not be 100% correct, but e.g. for
+        //
+        //   `concat(null, null)`
+        //
+        // we currently have no other option as we cannot specify which one should match by signatures.
+        //
+        //     `concat(text, text):text`
+        //     `concat(array(E), array(E)):array(E)`
+        //
+        if (returnTypeIsTheSame(mostSpecificFunctions)
+            || argumentTypes.stream().allMatch(d -> d.id() == DataTypes.UNDEFINED.id())) {
+            ApplicableFunction selectedFunction = mostSpecificFunctions.stream()
+                .sorted(Comparator.comparing(Objects::toString))
+                .iterator().next();
+
+            return List.of(selectedFunction);
+        }
+
+        return mostSpecificFunctions;
+    }
+
+    private static List<ApplicableFunction> selectMostSpecificFunctions(List<ApplicableFunction> candidates) {
+        List<ApplicableFunction> representatives = new ArrayList<>();
+
+        for (ApplicableFunction current : candidates) {
+            boolean found = false;
+            for (int i = 0; i < representatives.size(); i++) {
+                ApplicableFunction representative = representatives.get(i);
+                if (isMoreSpecificThan(current, representative)) {
+                    representatives.set(i, current);
+                }
+                if (isMoreSpecificThan(current, representative)
+                    || isMoreSpecificThan(representative, current)) {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                representatives.add(current);
+            }
+        }
+
+        return representatives;
+    }
+
+    /**
+     * One method is more specific than another if invocation handled by the first method
+     * could be passed on to the other one.
+     * Additionally possible variadic type signatures are taken into account,
+     * an exact amount of declared type signatures is more specific than expanded variadic type signatures.
+     */
+    private static boolean isMoreSpecificThan(ApplicableFunction left,
+                                              ApplicableFunction right) {
+        List<TypeSignature> resolvedTypes = left.getBoundSignature().getArgumentTypes();
+        BoundVariables boundVariables = SignatureBinder.withPrecedenceOnly(right.getDeclaredSignature())
+            .bindVariables(resolvedTypes);
+        if (boundVariables == null) {
+            return false;
+        }
+
+        int leftArgsCount = left.getDeclaredSignature().getArgumentTypes().size();
+        int rightArgsCount = right.getDeclaredSignature().getArgumentTypes().size();
+        return leftArgsCount >= rightArgsCount;
+    }
+
+    private static boolean returnTypeIsTheSame(List<ApplicableFunction> applicableFunctions) {
+        Set<DataType<?>> returnTypes = applicableFunctions.stream()
+            .map(function -> function.getBoundSignature().getReturnType().createType())
+            .collect(Collectors.toSet());
+        return returnTypes.size() == 1;
+    }
+
+    private static class ApplicableFunction implements Supplier<FunctionImplementation> {
+
+        private final Signature declaredSignature;
+        private final Signature boundSignature;
+        private final Function<List<DataType>, FunctionImplementation> factory;
+
+        public ApplicableFunction(Signature declaredSignature,
+                                  Signature boundSignature,
+                                  Function<List<DataType>, FunctionImplementation> factory) {
+            this.declaredSignature = declaredSignature;
+            this.boundSignature = boundSignature;
+            this.factory = factory;
+        }
+
+        public Signature getDeclaredSignature() {
+            return declaredSignature;
+        }
+
+        public Signature getBoundSignature() {
+            return boundSignature;
+        }
+
+        @Override
+        public FunctionImplementation get() {
+            return factory.apply(Lists2.map(boundSignature.getArgumentTypes(), TypeSignature::createType));
+        }
+
+        @Override
+        public String toString() {
+            return "ApplicableFunction{" +
+                   "declaredSignature=" + declaredSignature +
+                   ", boundSignature=" + boundSignature +
+                   '}';
         }
     }
 }

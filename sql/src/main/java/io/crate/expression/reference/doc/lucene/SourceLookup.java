@@ -73,14 +73,10 @@ public final class SourceLookup {
         return fieldsVisitor.source();
     }
 
-    private Map<String, Object> loadSource() {
-        ensureDocVisited();
-        return XContentHelper.convertToMap(fieldsVisitor.source(), false, XContentType.JSON).v2();
-    }
-
     private void ensureSourceParsed() {
         if (source == null) {
-            source = loadSource();
+            ensureDocVisited();
+            source = XContentHelper.toMap(fieldsVisitor.source(), XContentType.JSON);
         }
     }
 
@@ -96,24 +92,23 @@ public final class SourceLookup {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    static Object extractValue(final Map map, List<String> path, int pathStartIndex) {
+    static Object extractValue(final Map<?, ?> map, List<String> path, int pathStartIndex) {
         assert path instanceof RandomAccess : "path should support RandomAccess for fast index optimized loop";
-        Map m = map;
+        Map<?, ?> m = map;
         Object tmp = null;
         for (int i = pathStartIndex; i < path.size(); i++) {
             tmp = m.get(path.get(i));
             if (tmp instanceof Map) {
-                m = (Map) tmp;
+                m = (Map<?, ?>) tmp;
             } else if (tmp instanceof List) {
-                List list = (List) tmp;
+                List<?> list = (List<?>) tmp;
                 if (i + 1 == path.size()) {
                     return list;
                 }
-                List newList = new ArrayList(list.size());
+                ArrayList<Object> newList = new ArrayList<>(list.size());
                 for (Object o : list) {
                     if (o instanceof Map) {
-                        newList.add(extractValue((Map) o, path, i + 1));
+                        newList.add(extractValue((Map<?, ?>) o, path, i + 1));
                     } else {
                         newList.add(o);
                     }

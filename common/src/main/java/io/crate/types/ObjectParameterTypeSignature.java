@@ -20,17 +20,19 @@
  * agreement.
  */
 
-package io.crate.expression.reference.sys.node;
+package io.crate.types;
 
-import io.crate.expression.reference.ObjectCollectExpression;
+final class ObjectParameterTypeSignature extends TypeSignature {
 
-public abstract class NestedNodeStatsExpression extends ObjectCollectExpression<NodeStatsContext> {
+    private final String parameterName;
 
-    @Override
-    public void setNextRow(NodeStatsContext nodeStatsContext) {
-        value = null;
-        if (nodeStatsContext.isComplete()) {
-            super.setNextRow(nodeStatsContext);
-        }
+    public ObjectParameterTypeSignature(String parameterName,
+                                        TypeSignature typeSignature) {
+        super(typeSignature.getBaseTypeName(), typeSignature.getParameters());
+        this.parameterName = parameterName;
+    }
+
+    public String parameterName() {
+        return parameterName;
     }
 }
