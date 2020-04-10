@@ -150,9 +150,6 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
                     }
                     throw new RuntimeException(e);
                 }
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Failed to execute upsert shardId={} id={} error={}", request.shardId(), item.id(), e);
-                }
 
                 // *mark* the item as failed by setting the source to null
                 // to prevent the replica operation from processing this concrete item

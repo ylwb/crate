@@ -52,7 +52,7 @@ public final class ShardInsertRequest extends ShardWriteRequest<ShardInsertReque
      */
     private Reference[] insertColumns;
 
-    private EnumSet<Values> values;
+    private EnumSet<Property> properties;
 
     public ShardInsertRequest(
         ShardId shardId,
@@ -66,7 +66,7 @@ public final class ShardInsertRequest extends ShardWriteRequest<ShardInsertReque
         super(shardId, jobId);
         this.sessionSettings = sessionSettings;
         this.insertColumns = insertColumns;
-        this.values = Values.toEnumSet(continueOnError, validateGeneratedColumns, duplicateKeyAction);
+        this.properties = Property.toEnumSet(continueOnError, validateGeneratedColumns, duplicateKeyAction);
     }
 
     public ShardInsertRequest(StreamInput in) throws IOException {
@@ -80,7 +80,7 @@ public final class ShardInsertRequest extends ShardWriteRequest<ShardInsertReque
             }
             insertValuesStreamer = Symbols.streamerArray(List.of(insertColumns));
         }
-        values = EnumSets.unpackFromInt(in.readVInt(), Values.class);
+        properties = EnumSets.unpackFromInt(in.readVInt(), Property.class);
         sessionSettings = new SessionSettings(in);
         int numItems = in.readVInt();
         items = new ArrayList<>(numItems);
@@ -102,7 +102,7 @@ public final class ShardInsertRequest extends ShardWriteRequest<ShardInsertReque
         } else {
             out.writeVInt(0);
         }
-        out.writeVInt(EnumSets.packToInt(values));
+        out.writeVInt(EnumSets.packToInt(properties));
         sessionSettings.writeTo(out);
         out.writeVInt(items.size());
         for (ShardInsertRequest.Item item : items) {
@@ -134,17 +134,17 @@ public final class ShardInsertRequest extends ShardWriteRequest<ShardInsertReque
 
     @Override
     public boolean continueOnError() {
-        return Values.continueOnError(values);
+        return Property.continueOnError(properties);
     }
 
     @Override
     public boolean validateConstraints() {
-        return Values.validateConstraints(values);
+        return Property.validateConstraints(properties);
     }
 
     @Override
     public DuplicateKeyAction duplicateKeyAction() {
-        return Values.duplicationAction(values);
+        return Property.duplicationAction(properties);
     }
 
     @Override
@@ -161,67 +161,67 @@ public final class ShardInsertRequest extends ShardWriteRequest<ShardInsertReque
         ShardInsertRequest items = (ShardInsertRequest) o;
         return Objects.equals(sessionSettings, items.sessionSettings) &&
                Arrays.equals(insertColumns, items.insertColumns) &&
-               Objects.equals(values, items.values);
+               Objects.equals(properties, items.properties);
     }
 
     @Override
     public int hashCode() {
-        int result = Objects.hash(super.hashCode(), sessionSettings, values);
+        int result = Objects.hash(super.hashCode(), sessionSettings, properties);
         result = 31 * result + Arrays.hashCode(insertColumns);
         return result;
     }
 
-    // Values are only used for internal storage and serialization
-    private enum Values {
+    // Property is only used for internal storage and serialization
+    private enum Property {
         DUPLICATE_KEY_UPDATE_OR_FAIL,
         DUPLICATE_KEY_OVERWRITE,
         DUPLICATE_KEY_IGNORE,
         CONTINUE_ON_ERROR,
         VALIDATE_CONSTRAINTS;
 
-        static EnumSet<Values> toEnumSet(boolean continueOnError, boolean validateConstraints, DuplicateKeyAction action) {
-            ArrayList<Values> values = new ArrayList<>(3);
+        static EnumSet<Property> toEnumSet(boolean continueOnError, boolean validateConstraints, DuplicateKeyAction action) {
+            ArrayList<Property> properties = new ArrayList<>(3);
             if (continueOnError) {
-                values.add(Values.CONTINUE_ON_ERROR);
+                properties.add(Property.CONTINUE_ON_ERROR);
             }
             if (validateConstraints) {
-                values.add(Values.VALIDATE_CONSTRAINTS);
+                properties.add(Property.VALIDATE_CONSTRAINTS);
             }
             switch (action) {
                 case IGNORE:
-                    values.add(Values.DUPLICATE_KEY_IGNORE);
+                    properties.add(Property.DUPLICATE_KEY_IGNORE);
                     break;
                 case OVERWRITE:
-                    values.add(Values.DUPLICATE_KEY_OVERWRITE);
+                    properties.add(Property.DUPLICATE_KEY_OVERWRITE);
                     break;
                 case UPDATE_OR_FAIL:
-                    values.add(Values.DUPLICATE_KEY_UPDATE_OR_FAIL);
+                    properties.add(Property.DUPLICATE_KEY_UPDATE_OR_FAIL);
                     break;
                 default:
                     throw new IllegalArgumentException("DuplicateKeyAction not supported for serialization: " + action.name());
             }
-            return EnumSet.copyOf(values);
+            return EnumSet.copyOf(properties);
         }
 
-        static DuplicateKeyAction duplicationAction(EnumSet<Values> values) {
-            if (values.contains(Values.DUPLICATE_KEY_UPDATE_OR_FAIL)) {
+        static DuplicateKeyAction duplicationAction(EnumSet<Property> values) {
+            if (values.contains(Property.DUPLICATE_KEY_UPDATE_OR_FAIL)) {
                 return DuplicateKeyAction.UPDATE_OR_FAIL;
             }
-            if (values.contains(Values.DUPLICATE_KEY_OVERWRITE)) {
+            if (values.contains(Property.DUPLICATE_KEY_OVERWRITE)) {
                 return DuplicateKeyAction.OVERWRITE;
             }
-            if (values.contains(Values.DUPLICATE_KEY_IGNORE)) {
+            if (values.contains(Property.DUPLICATE_KEY_IGNORE)) {
                 return DuplicateKeyAction.IGNORE;
             }
             throw new IllegalArgumentException("DuplicateKeyAction not found");
         }
 
-        static boolean continueOnError(EnumSet<Values> values) {
-            return values.contains(Values.CONTINUE_ON_ERROR);
+        static boolean continueOnError(EnumSet<Property> values) {
+            return values.contains(Property.CONTINUE_ON_ERROR);
         }
 
-        static boolean validateConstraints(EnumSet<Values> values) {
-            return values.contains(Values.VALIDATE_CONSTRAINTS);
+        static boolean validateConstraints(EnumSet<Property> values) {
+            return values.contains(Property.VALIDATE_CONSTRAINTS);
         }
     }
 
