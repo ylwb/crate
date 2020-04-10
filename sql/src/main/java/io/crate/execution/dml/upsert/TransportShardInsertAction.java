@@ -139,10 +139,10 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
                     indexShard,
                     insertSourceGen
                 );
-                    if (translog != null) {
-                        shardResponse.add(location);
-                        translogLocation = translog;
-                    }
+                if (translog != null) {
+                    shardResponse.add(location);
+                    translogLocation = translog;
+                }
             } catch (Exception e) {
                 if (retryPrimaryException(e)) {
                     if (e instanceof RuntimeException) {
@@ -150,7 +150,6 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
                     }
                     throw new RuntimeException(e);
                 }
-
                 // *mark* the item as failed by setting the source to null
                 // to prevent the replica operation from processing this concrete item
                 item.source(null);
