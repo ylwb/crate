@@ -23,6 +23,7 @@
 package io.crate.execution.dml.upsert;
 
 import com.google.common.annotations.VisibleForTesting;
+import io.crate.Constants;
 import io.crate.execution.ddl.SchemaUpdateClient;
 import io.crate.execution.dml.ShardResponse;
 import io.crate.execution.dml.TransportShardAction;
@@ -36,10 +37,12 @@ import io.crate.metadata.TransactionContext;
 import io.crate.metadata.doc.DocTableInfo;
 import io.crate.metadata.table.Operation;
 import org.elasticsearch.ExceptionsHelper;
+import org.elasticsearch.action.support.replication.ReplicationOperation;
 import org.elasticsearch.action.support.replication.TransportReplicationAction;
 import org.elasticsearch.cluster.action.shard.ShardStateAction;
 import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
 import org.elasticsearch.cluster.service.ClusterService;
+import org.elasticsearch.common.CheckedSupplier;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.inject.Singleton;
@@ -52,6 +55,7 @@ import org.elasticsearch.index.engine.VersionConflictEngineException;
 import org.elasticsearch.index.mapper.SourceToParse;
 import org.elasticsearch.index.seqno.SequenceNumbers;
 import org.elasticsearch.index.shard.IndexShard;
+import org.elasticsearch.index.shard.ShardId;
 import org.elasticsearch.index.translog.Translog;
 import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -62,6 +66,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 
 import static io.crate.exceptions.SQLExceptions.userFriendlyCrateExceptionTopOnly;
 
@@ -262,12 +267,36 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
         return indexResult.getTranslogLocation();
     }
 
+    protected <T extends Engine.Result> T executeOnPrimaryHandlingMappingUpdate(ShardId shardId,
+                                                                                CheckedSupplier<T, IOException> execute,
+                                                                                Function<Exception, T> onMappingUpdateError) throws IOException {
+        T result = execute.get();
+        if (result.getResultType() == Engine.Result.Type.MAPPING_UPDATE_REQUIRED) {
+            try {
+                mappingUpdate.updateMappings(result.getRequiredMappingUpdate(), shardId, Constants.DEFAULT_MAPPING_TYPE);
+            } catch (Exception e) {
+                return onMappingUpdateError.apply(e);
+            }
+            result = execute.get();
+            if (result.getResultType() == Engine.Result.Type.MAPPING_UPDATE_REQUIRED) {
+                // double mapping update. We assume that the successful mapping update wasn't yet processed on the node
+                // and retry the entire request again.
+                throw new ReplicationOperation.RetryOnPrimaryException(shardId,
+                                                                       "Dynamic mappings are not available on the node that holds the primary yet");
+            }
+        }
+        assert result.getFailure() instanceof ReplicationOperation.RetryOnPrimaryException == false :
+            "IndexShard shouldn't use RetryOnPrimaryException. got " + result.getFailure();
+        return result;
+    }
+
     private Engine.IndexResult index(ShardInsertRequest.Item item,
                                      IndexShard indexShard,
                                      boolean isRetry,
                                      long seqNo,
                                      long primaryTerm,
                                      long version) throws Exception {
+
         SourceToParse sourceToParse = new SourceToParse(
             indexShard.shardId().getIndexName(),
             item.id(),
@@ -275,9 +304,26 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
             XContentType.JSON
         );
 
-        Engine.IndexResult indexResult = executeOnPrimaryHandlingMappingUpdate(
-            indexShard.shardId(),
-            () -> indexShard.applyIndexOperationOnPrimary(
+        Engine.IndexResult result;
+        result = indexShard.applyIndexOperationOnPrimary(
+            version,
+            VersionType.INTERNAL,
+            sourceToParse,
+            seqNo,
+            primaryTerm,
+            Translog.UNSET_AUTO_GENERATED_TIMESTAMP,
+            isRetry
+        );
+
+        if (result.getResultType() == Engine.Result.Type.MAPPING_UPDATE_REQUIRED) {
+            try {
+                mappingUpdate.updateMappings(result.getRequiredMappingUpdate(),
+                                             indexShard.shardId(),
+                                             Constants.DEFAULT_MAPPING_TYPE);
+            } catch (Exception e) {
+                return indexShard.getFailedIndexResult(e, Versions.MATCH_ANY);
+            }
+            result = indexShard.applyIndexOperationOnPrimary(
                 version,
                 VersionType.INTERNAL,
                 sourceToParse,
@@ -285,25 +331,32 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
                 primaryTerm,
                 Translog.UNSET_AUTO_GENERATED_TIMESTAMP,
                 isRetry
-            ),
-            e -> indexShard.getFailedIndexResult(e, Versions.MATCH_ANY)
-        );
+            );
+            if (result.getResultType() == Engine.Result.Type.MAPPING_UPDATE_REQUIRED) {
+                throw new ReplicationOperation.RetryOnPrimaryException(indexShard.shardId(), "Dynamic mappings are not available on the node that holds the primary yet");
 
-        switch (indexResult.getResultType()) {
+            }
+        }
+
+        assert result.getFailure() instanceof ReplicationOperation.RetryOnPrimaryException == false :
+            "IndexShard shouldn't use RetryOnPrimaryException. got " + result.getFailure();
+
+        switch (result.getResultType()) {
             case SUCCESS:
                 // update the seqNo and version on request for the replicas
-                item.seqNo(indexResult.getSeqNo());
-                item.version(indexResult.getVersion());
-                return indexResult;
+                item.seqNo(result.getSeqNo());
+                item.version(result.getVersion());
+                return result;
 
             case FAILURE:
-                Exception failure = indexResult.getFailure();
+                Exception failure = result.getFailure();
                 assert failure != null : "Failure must not be null if resultType is FAILURE";
                 throw failure;
 
             case MAPPING_UPDATE_REQUIRED:
             default:
-                throw new AssertionError("IndexResult must either succeed or fail. Required mapping updates must have been handled.");
+                throw new AssertionError(
+                    "IndexResult must either succeed or fail. Required mapping updates must have been handled.");
         }
     }
 }
