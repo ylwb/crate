@@ -42,7 +42,6 @@ import org.elasticsearch.action.support.replication.TransportReplicationAction;
 import org.elasticsearch.cluster.action.shard.ShardStateAction;
 import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
 import org.elasticsearch.cluster.service.ClusterService;
-import org.elasticsearch.common.CheckedSupplier;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.inject.Singleton;
@@ -55,7 +54,6 @@ import org.elasticsearch.index.engine.VersionConflictEngineException;
 import org.elasticsearch.index.mapper.SourceToParse;
 import org.elasticsearch.index.seqno.SequenceNumbers;
 import org.elasticsearch.index.shard.IndexShard;
-import org.elasticsearch.index.shard.ShardId;
 import org.elasticsearch.index.translog.Translog;
 import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -66,7 +64,6 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Function;
 
 import static io.crate.exceptions.SQLExceptions.userFriendlyCrateExceptionTopOnly;
 
@@ -138,12 +135,7 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
                 break;
             }
             try {
-                Translog.Location translog = indexItem(
-                    request,
-                    item,
-                    indexShard,
-                    insertSourceGen
-                );
+                Translog.Location translog = indexItem(request, item, indexShard, insertSourceGen);
                 if (translog != null) {
                     shardResponse.add(location);
                     translogLocation = translog;
@@ -222,6 +214,7 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
             try {
                 isRetry = retryCount > 0;
                 return insert(request, item, indexShard, isRetry, insertSourceGen);
+                // move this down
             } catch (VersionConflictEngineException e) {
                 lastException = e;
                 if (request.duplicateKeyAction() == DuplicateKeyAction.IGNORE) {
@@ -263,40 +256,6 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
         long seqNo = SequenceNumbers.UNASSIGNED_SEQ_NO;
         long primaryTerm = SequenceNumbers.UNASSIGNED_PRIMARY_TERM;
 
-        Engine.IndexResult indexResult = index(item, indexShard, isRetry, seqNo, primaryTerm, version);
-        return indexResult.getTranslogLocation();
-    }
-
-    protected <T extends Engine.Result> T executeOnPrimaryHandlingMappingUpdate(ShardId shardId,
-                                                                                CheckedSupplier<T, IOException> execute,
-                                                                                Function<Exception, T> onMappingUpdateError) throws IOException {
-        T result = execute.get();
-        if (result.getResultType() == Engine.Result.Type.MAPPING_UPDATE_REQUIRED) {
-            try {
-                mappingUpdate.updateMappings(result.getRequiredMappingUpdate(), shardId, Constants.DEFAULT_MAPPING_TYPE);
-            } catch (Exception e) {
-                return onMappingUpdateError.apply(e);
-            }
-            result = execute.get();
-            if (result.getResultType() == Engine.Result.Type.MAPPING_UPDATE_REQUIRED) {
-                // double mapping update. We assume that the successful mapping update wasn't yet processed on the node
-                // and retry the entire request again.
-                throw new ReplicationOperation.RetryOnPrimaryException(shardId,
-                                                                       "Dynamic mappings are not available on the node that holds the primary yet");
-            }
-        }
-        assert result.getFailure() instanceof ReplicationOperation.RetryOnPrimaryException == false :
-            "IndexShard shouldn't use RetryOnPrimaryException. got " + result.getFailure();
-        return result;
-    }
-
-    private Engine.IndexResult index(ShardInsertRequest.Item item,
-                                     IndexShard indexShard,
-                                     boolean isRetry,
-                                     long seqNo,
-                                     long primaryTerm,
-                                     long version) throws Exception {
-
         SourceToParse sourceToParse = new SourceToParse(
             indexShard.shardId().getIndexName(),
             item.id(),
@@ -316,13 +275,9 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
         );
 
         if (result.getResultType() == Engine.Result.Type.MAPPING_UPDATE_REQUIRED) {
-            try {
-                mappingUpdate.updateMappings(result.getRequiredMappingUpdate(),
-                                             indexShard.shardId(),
-                                             Constants.DEFAULT_MAPPING_TYPE);
-            } catch (Exception e) {
-                return indexShard.getFailedIndexResult(e, Versions.MATCH_ANY);
-            }
+            mappingUpdate.updateMappings(result.getRequiredMappingUpdate(),
+                                         indexShard.shardId(),
+                                         Constants.DEFAULT_MAPPING_TYPE);
             result = indexShard.applyIndexOperationOnPrimary(
                 version,
                 VersionType.INTERNAL,
@@ -333,7 +288,8 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
                 isRetry
             );
             if (result.getResultType() == Engine.Result.Type.MAPPING_UPDATE_REQUIRED) {
-                throw new ReplicationOperation.RetryOnPrimaryException(indexShard.shardId(), "Dynamic mappings are not available on the node that holds the primary yet");
+                throw new ReplicationOperation.RetryOnPrimaryException(indexShard.shardId(),
+                                                                       "Dynamic mappings are not available on the node that holds the primary yet");
 
             }
         }
@@ -346,7 +302,7 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
                 // update the seqNo and version on request for the replicas
                 item.seqNo(result.getSeqNo());
                 item.version(result.getVersion());
-                return result;
+                return result.getTranslogLocation();
 
             case FAILURE:
                 Exception failure = result.getFailure();
