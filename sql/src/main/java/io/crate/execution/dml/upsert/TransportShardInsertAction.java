@@ -209,19 +209,15 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
                                         IndexShard indexShard,
                                         InsertSourceGen insertSourceGen) throws Exception {
         VersionConflictEngineException lastException = null;
-        boolean isRetry;
-        for (int retryCount = 0; retryCount < MAX_RETRY_LIMIT; retryCount++) {
-            try {
-                isRetry = retryCount > 0;
-                return insert(request, item, indexShard, isRetry, insertSourceGen);
-                // move this down
-            } catch (VersionConflictEngineException e) {
-                lastException = e;
-                if (request.duplicateKeyAction() == DuplicateKeyAction.IGNORE) {
-                    // on conflict do nothing
-                    item.source(null);
-                    return null;
-                }
+        try {
+            return insert(request, item, indexShard, false, insertSourceGen);
+            // move this down
+        } catch (VersionConflictEngineException e) {
+            lastException = e;
+            if (request.duplicateKeyAction() == DuplicateKeyAction.IGNORE) {
+                // on conflict do nothing
+                item.source(null);
+                return null;
             }
         }
         logger.warn("[{}] VersionConflict for document id={}, version={} exceeded retry limit of {}, will stop retrying",
