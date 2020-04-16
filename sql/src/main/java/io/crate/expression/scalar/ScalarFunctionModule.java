@@ -131,7 +131,6 @@ public class ScalarFunctionModule extends AbstractModule {
         functions.add(new FuncResolver(signature, factory));
     }
 
-
     @Override
     protected void configure() {
         NegateFunctions.register(this);

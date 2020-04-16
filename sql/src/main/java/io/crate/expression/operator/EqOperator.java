@@ -36,11 +36,9 @@ import io.crate.types.DataType;
 import io.crate.types.DataTypes;
 import io.crate.types.ObjectType;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-import static io.crate.expression.operator.CmpOperator.CmpResolver.createInfo;
 
 public final class EqOperator extends Operator<Object> {
 
@@ -53,8 +51,13 @@ public final class EqOperator extends Operator<Object> {
     }
 
     public static Function createFunction(Symbol left, Symbol right) {
-        return new Function(createInfo(NAME, Arrays.asList(left.valueType(), right.valueType())),
-            Arrays.asList(left, right));
+        return new Function(
+            new FunctionInfo(
+                new FunctionIdent(
+                    NAME,
+                    List.of(left.valueType(), right.valueType())),
+                DataTypes.BOOLEAN),
+            List.of(left, right));
     }
 
     private EqOperator(FunctionInfo info) {

@@ -23,22 +23,41 @@
 package io.crate.expression.operator;
 
 import io.crate.expression.operator.any.AnyOperators;
+import io.crate.metadata.FuncResolver;
 import io.crate.metadata.FunctionIdent;
 import io.crate.metadata.FunctionImplementation;
 import io.crate.metadata.FunctionName;
 import io.crate.metadata.FunctionResolver;
+import io.crate.metadata.functions.Signature;
+import io.crate.types.DataType;
 import org.elasticsearch.common.inject.AbstractModule;
+import org.elasticsearch.common.inject.TypeLiteral;
 import org.elasticsearch.common.inject.multibindings.MapBinder;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 public class OperatorModule extends AbstractModule {
 
     private Map<FunctionIdent, FunctionImplementation> functions = new HashMap<>();
     private Map<FunctionName, FunctionResolver> dynamicFunctionResolvers = new HashMap<>();
+
+    private HashMap<FunctionName, List<FuncResolver>> functionImplementations = new HashMap<>();
+    private MapBinder<FunctionName, List<FuncResolver>> implementationsBinder;
+
     private MapBinder<FunctionIdent, FunctionImplementation> functionBinder;
     private MapBinder<FunctionName, FunctionResolver> dynamicFunctionBinder;
+
+
+    public void register(Signature signature, Function<List<DataType>, FunctionImplementation> factory) {
+        List<FuncResolver> functions = functionImplementations.computeIfAbsent(
+            signature.getName(),
+            k -> new ArrayList<>());
+        functions.add(new FuncResolver(signature, factory));
+    }
 
     public void registerOperatorFunction(FunctionImplementation impl) {
         functions.put(impl.info().ident(), impl);
@@ -80,6 +99,15 @@ public class OperatorModule extends AbstractModule {
         }
         for (Map.Entry<FunctionName, FunctionResolver> entry : dynamicFunctionResolvers.entrySet()) {
             dynamicFunctionBinder.addBinding(entry.getKey()).toInstance(entry.getValue());
+        }
+
+        // New signature registry
+        implementationsBinder = MapBinder.newMapBinder(
+            binder(),
+            new TypeLiteral<>() {},
+            new TypeLiteral<>() {});
+        for (Map.Entry<FunctionName, List<FuncResolver>> entry : functionImplementations.entrySet()) {
+            implementationsBinder.addBinding(entry.getKey()).toProvider(entry::getValue);
         }
 
         // clear registration maps
