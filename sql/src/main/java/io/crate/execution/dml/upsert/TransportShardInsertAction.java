@@ -211,7 +211,6 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
         VersionConflictEngineException lastException = null;
         try {
             return insert(request, item, indexShard, false, insertSourceGen);
-            // move this down
         } catch (VersionConflictEngineException e) {
             lastException = e;
             if (request.duplicateKeyAction() == DuplicateKeyAction.IGNORE) {
@@ -260,6 +259,7 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
         );
 
         Engine.IndexResult result;
+
         result = indexShard.applyIndexOperationOnPrimary(
             version,
             VersionType.INTERNAL,
@@ -274,6 +274,7 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
             mappingUpdate.updateMappings(result.getRequiredMappingUpdate(),
                                          indexShard.shardId(),
                                          Constants.DEFAULT_MAPPING_TYPE);
+
             result = indexShard.applyIndexOperationOnPrimary(
                 version,
                 VersionType.INTERNAL,

@@ -24,7 +24,8 @@ package io.crate.execution.dml.upsert;
 
 import io.crate.Streamer;
 import io.crate.common.collections.EnumSets;
-import io.crate.expression.symbol.Symbol;
+import io.crate.execution.dml.ShardRequest;
+import io.crate.execution.dml.upsert.ShardWriteRequest.DuplicateKeyAction;
 import io.crate.expression.symbol.Symbols;
 import io.crate.metadata.Reference;
 import io.crate.metadata.settings.SessionSettings;
@@ -37,13 +38,11 @@ import org.elasticsearch.index.shard.ShardId;
 import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
-public final class ShardInsertRequest extends ShardWriteRequest<ShardInsertRequest, ShardInsertRequest.Item> {
+public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, ShardInsertRequest.Item> {
 
     private SessionSettings sessionSettings;
 
@@ -110,65 +109,29 @@ public final class ShardInsertRequest extends ShardWriteRequest<ShardInsertReque
         }
     }
 
-    @Override
     public SessionSettings sessionSettings() {
         return sessionSettings;
     }
 
     @Nullable
-    @Override
-    public Symbol[] returnValues() {
-        return null;
-    }
-
-    @Nullable
-    @Override
     public String[] updateColumns() {
         return null;
     }
 
-    @Override
     public Reference[] insertColumns() {
         return insertColumns;
     }
 
-    @Override
     public boolean continueOnError() {
         return Property.continueOnError(properties);
     }
 
-    @Override
     public boolean validateConstraints() {
         return Property.validateConstraints(properties);
     }
 
-    @Override
-    public DuplicateKeyAction duplicateKeyAction() {
+    public ShardWriteRequest.DuplicateKeyAction duplicateKeyAction() {
         return Property.duplicationAction(properties);
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) {
-            return true;
-        }
-        if (o == null || getClass() != o.getClass()) {
-            return false;
-        }
-        if (!super.equals(o)) {
-            return false;
-        }
-        ShardInsertRequest items = (ShardInsertRequest) o;
-        return Objects.equals(sessionSettings, items.sessionSettings) &&
-               Arrays.equals(insertColumns, items.insertColumns) &&
-               Objects.equals(properties, items.properties);
-    }
-
-    @Override
-    public int hashCode() {
-        int result = Objects.hash(super.hashCode(), sessionSettings, properties);
-        result = 31 * result + Arrays.hashCode(insertColumns);
-        return result;
     }
 
     // Property is only used for internal storage and serialization
@@ -228,7 +191,7 @@ public final class ShardInsertRequest extends ShardWriteRequest<ShardInsertReque
     /**
      * A single insert item.
      */
-    public static final class Item extends ShardWriteRequest.Item {
+    public static final class Item extends ShardRequest.Item {
 
         @Nullable
         protected BytesReference source;
@@ -246,34 +209,31 @@ public final class ShardInsertRequest extends ShardWriteRequest<ShardInsertReque
             @Nullable Long seqNo,
             @Nullable Long primaryTerm
         ) {
-            super(id, version, seqNo, primaryTerm);
+            super(id);
+            if (version != null) {
+                this.version = version;
+            }
+            if (seqNo != null) {
+                this.seqNo = seqNo;
+            }
+            if (primaryTerm != null) {
+                this.primaryTerm = primaryTerm;
+            }
             this.insertValues = insertValues;
         }
 
         @Nullable
-        @Override
         public BytesReference source() {
             return source;
         }
 
-        @Override
         public void source(BytesReference source) {
             this.source = source;
         }
 
         @Nullable
-        Symbol[] updateAssignments() {
-            return null;
-        }
-
-        @Nullable
         public Object[] insertValues() {
             return insertValues;
-        }
-
-        @Nullable
-        public Symbol[] returnValues() {
-            return null;
         }
 
         public Item(StreamInput in, Streamer[] insertValueStreamers) throws IOException {
@@ -304,29 +264,6 @@ public final class ShardInsertRequest extends ShardWriteRequest<ShardInsertReque
                 out.writeBytesReference(source);
             }
         }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) {
-                return true;
-            }
-            if (o == null || getClass() != o.getClass()) {
-                return false;
-            }
-            if (!super.equals(o)) {
-                return false;
-            }
-            Item item = (Item) o;
-            return Objects.equals(source, item.source) &&
-                   Arrays.equals(insertValues, item.insertValues);
-        }
-
-        @Override
-        public int hashCode() {
-            int result = Objects.hash(super.hashCode(), source);
-            result = 31 * result + Arrays.hashCode(insertValues);
-            return result;
-        }
     }
 
     public static class Builder {
@@ -342,7 +279,7 @@ public final class ShardInsertRequest extends ShardWriteRequest<ShardInsertReque
         public Builder(
             SessionSettings sessionSettings,
             TimeValue timeout,
-            DuplicateKeyAction duplicateKeyAction,
+            ShardWriteRequest.DuplicateKeyAction duplicateKeyAction,
             boolean continueOnError,
             Reference[] insertColumns,
             UUID jobId,

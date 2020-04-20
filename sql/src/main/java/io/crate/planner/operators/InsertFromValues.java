@@ -47,7 +47,6 @@ import io.crate.execution.dml.upsert.GeneratedColumns;
 import io.crate.execution.dml.upsert.InsertSourceFromCells;
 import io.crate.execution.dml.upsert.ShardInsertRequest;
 import io.crate.execution.dml.upsert.ShardUpsertRequest;
-import io.crate.execution.dml.upsert.ShardWriteRequest;
 import io.crate.execution.dsl.projection.ColumnIndexWriterProjection;
 import io.crate.execution.dsl.projection.builder.InputColumns;
 import io.crate.execution.dsl.projection.builder.ProjectionBuilder;
@@ -303,7 +302,7 @@ public class InsertFromValues implements LogicalPlan {
         }
     }
 
-    public <TReq extends ShardWriteRequest<TReq, TItem>, TItem extends ShardWriteRequest.Item> void executeAction(
+    public <TReq extends ShardRequest<TReq, TItem>, TItem extends ShardRequest.Item> void executeAction(
         DependencyCarrier dependencies,
         InputFactory.Context<CollectExpression<Row, ?>> context,
         PlannerContext plannerContext,
@@ -519,7 +518,7 @@ public class InsertFromValues implements LogicalPlan {
         }
     }
 
-    private <TReq extends ShardWriteRequest<TReq, TItem>, TItem extends ShardWriteRequest.Item> List<CompletableFuture<Long>> executeBulkAction(
+    private <TReq extends ShardRequest<TReq, TItem>, TItem extends ShardRequest.Item> List<CompletableFuture<Long>> executeBulkAction(
         DependencyCarrier dependencies,
         PlannerContext plannerContext,
         List<Input<?>> primaryKeyInputs,
