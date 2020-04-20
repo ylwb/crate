@@ -33,6 +33,7 @@ import org.elasticsearch.common.xcontent.XContentFactory;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public interface InsertSourceGen {
 
@@ -55,7 +56,8 @@ public interface InsertSourceGen {
                 return new GeneratedColsFromRawInsertSource(txnCtx, functions, table.generatedColumns(), table.defaultExpressionColumns());
             }
         }
-        return new InsertSourceFromCells(txnCtx, functions, table, indexName, validation, targets);
+        return new InsertSourceFromCells(txnCtx, functions, table, indexName, validation, targets.stream().map(x -> x.column()).collect(
+            Collectors.toList()));
     }
 
 }

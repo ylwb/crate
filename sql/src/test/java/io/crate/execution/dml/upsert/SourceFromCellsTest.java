@@ -45,6 +45,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
@@ -85,7 +86,8 @@ public class SourceFromCellsTest extends CrateDummyClusterServiceUnitTest {
     @Test
     public void testGeneratedSourceBytesRef() throws IOException {
         InsertSourceFromCells sourceFromCells = new InsertSourceFromCells(
-            txnCtx, e.functions(), t1, "t1", GeneratedColumns.Validation.VALUE_MATCH, Arrays.asList(x, y));
+            txnCtx, e.functions(), t1, "t1", GeneratedColumns.Validation.VALUE_MATCH, Arrays.asList(x, y).stream().map(x -> x.column()).collect(
+            Collectors.toList()));
         var source = sourceFromCells.generateSourceAndCheckConstraints(new Object[]{1, 2});
         assertThat(source, is(Map.of("x", 1, "y", 2, "z", 3)));
     }
@@ -93,7 +95,8 @@ public class SourceFromCellsTest extends CrateDummyClusterServiceUnitTest {
     @Test
     public void testGenerateSourceRaisesAnErrorIfGeneratedColumnValueIsSuppliedByUserAndDoesNotMatch() throws IOException {
         InsertSourceFromCells sourceFromCells = new InsertSourceFromCells(
-            txnCtx, e.functions(), t1, "t1", GeneratedColumns.Validation.VALUE_MATCH, Arrays.asList(x, y, z));
+            txnCtx, e.functions(), t1, "t1", GeneratedColumns.Validation.VALUE_MATCH, Arrays.asList(x, y, z).stream().map(x -> x.column()).collect(
+            Collectors.toList()));
 
         expectedException.expectMessage("Given value 8 for generated column z does not match calculation (x + y) = 3");
         sourceFromCells.generateSourceAndCheckConstraints(new Object[]{1, 2, 8});
@@ -102,7 +105,7 @@ public class SourceFromCellsTest extends CrateDummyClusterServiceUnitTest {
     @Test
     public void testGeneratedColumnGenerationThatDependsOnNestedColumnOfObject() throws IOException {
         InsertSourceFromCells sourceFromCells = new InsertSourceFromCells(
-            txnCtx, e.functions(), t2, "t2", GeneratedColumns.Validation.VALUE_MATCH, Collections.singletonList(obj));
+            txnCtx, e.functions(), t2, "t2", GeneratedColumns.Validation.VALUE_MATCH, Collections.singletonList(obj.column()));
         HashMap<Object, Object> m = new HashMap<>();
         m.put("a", 10);
         var map = sourceFromCells.generateSourceAndCheckConstraints(new Object[]{m});
@@ -144,7 +147,7 @@ public class SourceFromCellsTest extends CrateDummyClusterServiceUnitTest {
         Reference x = (Reference) relation.outputs().get(0);
 
         InsertSourceFromCells sourceFromCells = new InsertSourceFromCells(
-            txnCtx, e.functions(), t4, "t4", GeneratedColumns.Validation.VALUE_MATCH, Arrays.asList(x));
+            txnCtx, e.functions(), t4, "t4", GeneratedColumns.Validation.VALUE_MATCH, Arrays.asList(x.column()));
 
         Object[] input = new Object[]{1};
         var source = sourceFromCells.generateSourceAndCheckConstraints(input);
@@ -159,7 +162,7 @@ public class SourceFromCellsTest extends CrateDummyClusterServiceUnitTest {
         Reference y = (Reference) relation.outputs().get(1);
 
         InsertSourceFromCells sourceFromCells = new InsertSourceFromCells(
-            txnCtx, e.functions(), t4, "t4", GeneratedColumns.Validation.VALUE_MATCH, Arrays.asList(x, y));
+            txnCtx, e.functions(), t4, "t4", GeneratedColumns.Validation.VALUE_MATCH, Arrays.asList(x.column(), y.column()));
 
         Object[] input = {1, "cr8"};
         var source = sourceFromCells.generateSourceAndCheckConstraints(input);
@@ -171,7 +174,7 @@ public class SourceFromCellsTest extends CrateDummyClusterServiceUnitTest {
         // obj object as (a int,
         //                c as obj['a'] + 3),
         // b as obj['a'] + 1
-        List<Reference> targets = List.of(obj);
+        List<ColumnIdent> targets = List.of(obj.column());
         InsertSourceFromCells sourceFromCells = new InsertSourceFromCells(
             txnCtx, e.functions(), t2, "t2", GeneratedColumns.Validation.VALUE_MATCH, targets);
         HashMap<String, Object> providedValueForObj = new HashMap<>();
@@ -190,7 +193,7 @@ public class SourceFromCellsTest extends CrateDummyClusterServiceUnitTest {
         // obj object as (a int,
         //                c as obj['a'] + 3),
         // b as obj['a'] + 1
-        List<Reference> targets = List.of(obj);
+        List<ColumnIdent> targets = List.of(obj.column());
         InsertSourceFromCells sourceFromCells = new InsertSourceFromCells(
             txnCtx, e.functions(), t2, "t2", GeneratedColumns.Validation.VALUE_MATCH, targets);
         HashMap<String, Object> providedValueForObj = new HashMap<>();
@@ -207,7 +210,7 @@ public class SourceFromCellsTest extends CrateDummyClusterServiceUnitTest {
         DocTableInfo t5 = e.resolveTableInfo("t5");
         Reference obj = t5.getReference(new ColumnIdent("obj"));
         assertThat(obj, Matchers.notNullValue());
-        List<Reference> targets = List.of(obj);
+        List<ColumnIdent> targets = List.of(obj.column());
         InsertSourceFromCells sourceFromCells = new InsertSourceFromCells(
             txnCtx, e.functions(), t5, "t4", GeneratedColumns.Validation.VALUE_MATCH, targets);
         HashMap<String, Object> providedValueForObj = new HashMap<>();
@@ -223,7 +226,7 @@ public class SourceFromCellsTest extends CrateDummyClusterServiceUnitTest {
         DocTableInfo t5 = e.resolveTableInfo("t5");
         Reference obj = t5.getReference(new ColumnIdent("obj"));
         assertThat(obj, Matchers.notNullValue());
-        List<Reference> targets = List.of(obj);
+        List<ColumnIdent> targets = List.of(obj.column());
         InsertSourceFromCells sourceFromCells = new InsertSourceFromCells(
             txnCtx, e.functions(), t5, "t5", GeneratedColumns.Validation.VALUE_MATCH, targets);
         HashMap<String, Object> providedValueForObj = new HashMap<>();
@@ -254,7 +257,7 @@ public class SourceFromCellsTest extends CrateDummyClusterServiceUnitTest {
             tableInfo,
             "t",
             GeneratedColumns.Validation.VALUE_MATCH,
-            List.of(Objects.requireNonNull(tableInfo.getReference(new ColumnIdent("x")))));
+            List.of(Objects.requireNonNull(new ColumnIdent("x"))));
 
         var source = sourceFromCells.generateSourceAndCheckConstraints(new Object[]{1});
 

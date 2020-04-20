@@ -42,6 +42,7 @@ import io.crate.metadata.doc.DocTableInfo;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Used to apply update expressions to create a updated source
@@ -99,7 +100,7 @@ final class UpdateSourceGen {
                 txnCtx,
                 GeneratedColumns.Validation.VALUE_MATCH,
                 refResolver,
-                this.updateColumns,
+                this.updateColumns.stream().map(x -> x.column()).collect(Collectors.toList()),
                 table.generatedColumns()
             );
         }

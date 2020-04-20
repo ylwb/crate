@@ -47,30 +47,31 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public final class InsertSourceFromCells implements InsertSourceGen {
 
-    private final List<Reference> targets;
+    private final List<ColumnIdent> targets;
     private final BiArrayRow row = new BiArrayRow();
     private final CheckConstraints<Map<String, Object>, CollectExpression<Map<String, Object>, ?>> checks;
     private final GeneratedColumns<Row> generatedColumns;
     private final Object[] defaultValues;
-    private final List<Reference> partitionedByColumns;
+    private final List<ColumnIdent> partitionedByColumns;
 
     public InsertSourceFromCells(TransactionContext txnCtx,
                                  Functions functions,
                                  DocTableInfo table,
                                  String indexName,
                                  GeneratedColumns.Validation validation,
-                                 List<Reference> targets) {
-        Tuple<List<Reference>, Object[]> allTargetColumnsAndDefaults = addDefaults(targets, table, txnCtx, functions);
+                                 List<ColumnIdent> targets) {
+        Tuple<List<ColumnIdent>, Object[]> allTargetColumnsAndDefaults = addDefaults(targets, table, txnCtx, functions);
         this.targets = allTargetColumnsAndDefaults.v1();
         this.defaultValues = allTargetColumnsAndDefaults.v2();
-        this.partitionedByColumns = table.partitionedByColumns();
+        this.partitionedByColumns = table.partitionedByColumns().stream().map(x -> x.column()).collect(Collectors.toList());
 
         ReferencesFromInputRow referenceResolver = new ReferencesFromInputRow(
             this.targets,
-            table.partitionedByColumns(),
+            table.partitionedByColumns().stream().map(x -> x.column()).collect(Collectors.toList()),
             indexName
         );
         InputFactory inputFactory = new InputFactory(functions);
@@ -101,15 +102,13 @@ public final class InsertSourceFromCells implements InsertSourceGen {
 
         HashMap<String, Object> source = new HashMap<>();
         for (int i = 0; i < targets.size(); i++) {
-            Reference target = targets.get(i);
+            ColumnIdent column = targets.get(i);
             Object value = row.get(i);
 
-            ColumnIdent column = target.column();
             Maps.mergeInto(source, column.name(), column.path(), value, Map::putIfAbsent);
         }
         for (int i = 0; i < partitionedByColumns.size(); i++) {
-            var pCol = partitionedByColumns.get(i);
-            var column = pCol.column();
+            var column = partitionedByColumns.get(i);
             ArrayList<String> fullPath = new ArrayList<>(1 + column.path().size());
             fullPath.add(column.name());
             fullPath.addAll(column.path());
@@ -126,20 +125,20 @@ public final class InsertSourceFromCells implements InsertSourceGen {
         return source;
     }
 
-    private static Tuple<List<Reference>, Object[]> addDefaults(List<Reference> targets,
+    private static Tuple<List<ColumnIdent>, Object[]> addDefaults(List<ColumnIdent> targets,
                                                                 DocTableInfo table,
                                                                 TransactionContext txnCtx,
                                                                 Functions functions) {
-        ArrayList<Reference> defaultColumns = new ArrayList<>(table.defaultExpressionColumns().size());
+        ArrayList<ColumnIdent> defaultColumns = new ArrayList<>(table.defaultExpressionColumns().size());
         ArrayList<Object> defaultValues = new ArrayList<>();
         for (Reference ref : table.defaultExpressionColumns()) {
             if (targets.contains(ref) == false) {
-                defaultColumns.add(ref);
+                defaultColumns.add(ref.column());
                 Object val = SymbolEvaluator.evaluateWithoutParams(txnCtx, functions, ref.defaultExpression());
                 defaultValues.add(val);
             }
         }
-        List<Reference> allColumns;
+        List<ColumnIdent> allColumns;
         if (defaultColumns.isEmpty()) {
             allColumns = targets;
         } else {
@@ -149,14 +148,14 @@ public final class InsertSourceFromCells implements InsertSourceGen {
     }
 
     private static class ReferencesFromInputRow implements ReferenceResolver<CollectExpression<Row, ?>> {
-        private final List<Reference> targets;
-        private final List<Reference> partitionedBy;
+        private final List<ColumnIdent> targets;
+        private final List<ColumnIdent> partitionedBy;
         private final List<ColumnIdent> columns;
         @Nullable
         private final PartitionName partitionName;
 
-        ReferencesFromInputRow(List<Reference> targets, List<Reference> partitionedBy, String indexName) {
-            this.columns = Lists2.map(targets, Reference::column);
+        ReferencesFromInputRow(List<ColumnIdent> targets, List<ColumnIdent> partitionedBy, String indexName) {
+            this.columns = targets;
             this.targets = targets;
             this.partitionedBy = partitionedBy;
             this.partitionName = partitionedBy.isEmpty() ? null : PartitionName.fromIndexOrTemplate(indexName);
@@ -164,13 +163,13 @@ public final class InsertSourceFromCells implements InsertSourceGen {
 
         @Override
         public CollectExpression<Row, ?> getImplementation(Reference ref) {
-            int idx = targets.indexOf(ref);
+            int idx = targets.indexOf(ref.column());
             if (idx >= 0) {
                 return new InputCollectExpression(idx);
             } else {
                 int rootIdx = columns.indexOf(ref.column().getRoot());
                 if (rootIdx < 0) {
-                    int partitionPos = partitionedBy.indexOf(ref);
+                    int partitionPos = partitionedBy.indexOf(ref.column());
                     if (partitionPos < 0) {
                         return NestableCollectExpression.constant(null);
                     } else {

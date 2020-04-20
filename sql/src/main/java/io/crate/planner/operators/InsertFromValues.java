@@ -101,6 +101,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 import static io.crate.data.SentinelRow.SENTINEL;
@@ -693,7 +694,7 @@ public class InsertFromValues implements LogicalPlan {
                 tableInfo,
                 index,
                 GeneratedColumns.Validation.VALUE_MATCH,
-                writerProjection.allTargetColumns()));
+                writerProjection.allTargetColumns().stream().map(x -> x.column()).collect(Collectors.toList())));
         validator.generateSourceAndCheckConstraints(cells);
     }
 
