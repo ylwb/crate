@@ -112,7 +112,7 @@ public class IndexWriterProjector implements Projector {
                 ShardingUpsertExecutor.BULK_REQUEST_TIMEOUT_SETTING.setting().get(settings),
                 overwriteDuplicates ? ShardWriteRequest.DuplicateKeyAction.OVERWRITE : ShardWriteRequest.DuplicateKeyAction.UPDATE_OR_FAIL,
                 true,
-                new ColumnIdent[]{rawSourceReference.column()},
+                new Reference[]{rawSourceReference},
                 jobId,
                 false
             )::newRequest;

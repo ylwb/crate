@@ -22,11 +22,15 @@
 
 package io.crate.execution.dml.upsert;
 
+import io.crate.Streamer;
 import io.crate.common.collections.EnumSets;
 import io.crate.execution.dml.ShardRequest;
 import io.crate.execution.dml.upsert.ShardWriteRequest.DuplicateKeyAction;
 import io.crate.metadata.ColumnIdent;
+import io.crate.metadata.Reference;
 import io.crate.metadata.settings.SessionSettings;
+import io.crate.types.DataType;
+import io.crate.types.DataTypes;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
@@ -48,20 +52,27 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
      */
     private ColumnIdent[] insertColumns;
 
+    private DataType<?>[] dataTypes;
+
     private EnumSet<Property> properties;
 
     public ShardInsertRequest(
         ShardId shardId,
         UUID jobId,
         SessionSettings sessionSettings,
-        ColumnIdent[] insertColumns,
+        Reference[] references,
         boolean continueOnError,
         boolean validateGeneratedColumns,
         DuplicateKeyAction duplicateKeyAction
     ) {
         super(shardId, jobId);
         this.sessionSettings = sessionSettings;
-        this.insertColumns = insertColumns;
+        this.insertColumns = new ColumnIdent[references.length];
+        this.dataTypes = new DataType[references.length];
+        for (int i = 0; i < references.length; i++) {
+            insertColumns[i] = references[i].column();
+            dataTypes[i] = references[i].valueType();
+        }
         this.properties = Property.toEnumSet(continueOnError, validateGeneratedColumns, duplicateKeyAction);
     }
 
@@ -74,12 +85,22 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
                 insertColumns[i] = new ColumnIdent(in);
             }
         }
+        int dataTypesSize = in.readVInt();
+        Streamer[] insertValuesStreamer = new Streamer[dataTypesSize];
+        if (dataTypesSize > 0) {
+            dataTypes = new DataType<?>[dataTypesSize];
+            for (int i = 0; i < dataTypesSize; i++) {
+                DataType<?> dataType = DataTypes.fromStream(in);
+                insertValuesStreamer[i] = dataType.streamer();
+                dataTypes[i] = dataType;
+            }
+        }
         properties = EnumSets.unpackFromInt(in.readVInt(), Property.class);
         sessionSettings = new SessionSettings(in);
         int numItems = in.readVInt();
         items = new ArrayList<>(numItems);
         for (int i = 0; i < numItems; i++) {
-            items.add(new ShardInsertRequest.Item(in));
+            items.add(new ShardInsertRequest.Item(in, insertValuesStreamer));
         }
     }
 
@@ -88,17 +109,31 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
         super.writeTo(out);
         if (insertColumns != null) {
             out.writeVInt(insertColumns.length);
-            for (ColumnIdent reference : insertColumns) {
-                reference.writeTo(out);
+            for (ColumnIdent columns : insertColumns) {
+                columns.writeTo(out);
             }
         } else {
             out.writeVInt(0);
         }
+        Streamer[] insertValuesStreamer = null;
+        if (dataTypes != null) {
+            insertValuesStreamer = new Streamer[insertColumns.length];
+            out.writeVInt(dataTypes.length);
+            if (dataTypes.length > 0) {
+                for (int i = 0; i < dataTypes.length; i++) {
+                    DataTypes.toStream(dataTypes[i], out);
+                    insertValuesStreamer[i] = dataTypes[i].streamer();
+                }
+            }
+        } else {
+            out.writeVInt(0);
+        }
+
         out.writeVInt(EnumSets.packToInt(properties));
         sessionSettings.writeTo(out);
         out.writeVInt(items.size());
         for (ShardInsertRequest.Item item : items) {
-            item.writeTo(out);
+            item.writeTo(out, insertValuesStreamer);
         }
     }
 
@@ -229,13 +264,14 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
             return insertValues;
         }
 
-        public Item(StreamInput in) throws IOException {
+        public Item(StreamInput in, Streamer[] insertValueStreamers) throws IOException {
             super(in);
             int missingAssignmentsSize = in.readVInt();
             if (missingAssignmentsSize > 0) {
+                assert insertValueStreamers != null : "streamers are required if reading insert values";
                 this.insertValues = new Object[missingAssignmentsSize];
                 for (int i = 0; i < missingAssignmentsSize; i++) {
-                    insertValues[i] = in.readGenericValue();
+                    insertValues[i] = insertValueStreamers[i].readValueFrom(in);
                 }
             }
             if (in.readBoolean()) {
@@ -243,11 +279,12 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
             }
         }
 
-        public void writeTo(StreamOutput out) throws IOException {
+        public void writeTo(StreamOutput out, Streamer[] insertValueStreamers) throws IOException {
             super.writeTo(out);
+            assert insertValueStreamers != null : "streamers are required to stream insert values";
             out.writeVInt(insertValues.length);
             for (int i = 0; i < insertValues.length; i++) {
-                out.writeGenericValue(insertValues[i]);
+                insertValueStreamers[i].writeValueTo(out, insertValues[i]);
             }
             boolean sourceAvailable = source != null;
             out.writeBoolean(sourceAvailable);
@@ -261,7 +298,7 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
 
         private final SessionSettings sessionSettings;
         private final TimeValue timeout;
-        private final ColumnIdent[] insertColumns;
+        private final Reference[] insertColumns;
         private final UUID jobId;
         private final boolean validateGeneratedColumns;
         private final boolean continueOnError;
@@ -272,7 +309,7 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
             TimeValue timeout,
             ShardWriteRequest.DuplicateKeyAction duplicateKeyAction,
             boolean continueOnError,
-            ColumnIdent[] insertColumns,
+            Reference[] insertColumns,
             UUID jobId,
             boolean validateGeneratedColumns) {
             this.sessionSettings = sessionSettings;

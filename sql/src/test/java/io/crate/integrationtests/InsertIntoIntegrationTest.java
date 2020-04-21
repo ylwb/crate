@@ -1138,6 +1138,7 @@ public class InsertIntoIntegrationTest extends SQLTransportIntegrationTest {
         refresh();
 
         execute("select day from target_table");
+
         assertThat(response.rows()[0][0], is(1447804800000L));
     }
 
