@@ -75,6 +75,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 import static io.crate.exceptions.SQLExceptions.userFriendlyCrateExceptionTopOnly;
 
@@ -137,7 +138,13 @@ public abstract class TransportShardWriteAction
         TransactionContext txnCtx = TransactionContext.of(request.sessionSettings());
         InsertSourceGen insertSourceGen = insertColumns == null
             ? null
-            : InsertSourceGen.of(txnCtx, functions, tableInfo, indexName, valueValidation, Arrays.asList(insertColumns));
+            : InsertSourceGen.of(txnCtx,
+                                 functions,
+                                 tableInfo,
+                                 indexName,
+                                 valueValidation,
+                                 Arrays.asList(insertColumns).stream().map(x -> x.column()).collect(
+                                     Collectors.toList()));
 
         UpdateSourceGen updateSourceGen = request.updateColumns() == null
             ? null

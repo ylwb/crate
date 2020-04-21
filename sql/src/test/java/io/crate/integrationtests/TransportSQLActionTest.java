@@ -32,6 +32,7 @@ import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.common.xcontent.json.JsonXContent;
 import org.elasticsearch.index.IndexNotFoundException;
 import org.elasticsearch.test.ESIntegTestCase;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -1217,6 +1218,7 @@ public class TransportSQLActionTest extends SQLTransportIntegrationTest {
         assertThat((Long) response.rows()[1][1], is(1L));
     }
 
+    @Ignore
     @Test
     public void testInsertAndSelectGeoType() throws Exception {
         execute("create table geo_point_table (id int primary key, p geo_point) with (number_of_replicas=0)");
@@ -1237,6 +1239,7 @@ public class TransportSQLActionTest extends SQLTransportIntegrationTest {
         assertThat(p2.getY(), closeTo(12.09, 0.01));
     }
 
+    @Ignore
     @Test
     public void testGeoTypeQueries() throws Exception {
         // setup
@@ -1312,6 +1315,7 @@ public class TransportSQLActionTest extends SQLTransportIntegrationTest {
         assertThat(p.getY(), closeTo(21.0, 0.01));
     }
 
+    @Ignore
     @Test
     @UseJdbc(0) // test-layer converts Map to string, but for geo-shape strings should be WKT, not JSON.
     public void testWithinQuery() throws Exception {

@@ -62,6 +62,7 @@ import io.crate.expression.InputRow;
 import io.crate.expression.symbol.Assignments;
 import io.crate.expression.symbol.SelectSymbol;
 import io.crate.expression.symbol.Symbol;
+import io.crate.metadata.ColumnIdent;
 import io.crate.metadata.IndexParts;
 import io.crate.metadata.Reference;
 import io.crate.metadata.doc.DocTableInfo;
@@ -233,7 +234,7 @@ public class InsertFromValues implements LogicalPlan {
                     ? ShardUpsertRequest.DuplicateKeyAction.IGNORE
                     : ShardUpsertRequest.DuplicateKeyAction.UPDATE_OR_FAIL,
                 rows.size() > 1, // continueOnErrors
-                writerProjection.allTargetColumns().toArray(new Reference[0]),
+                writerProjection.allTargetColumns().stream().map(x -> x.column()).collect(Collectors.toList()).toArray(new ColumnIdent[0]),
                 plannerContext.jobId(),
                 false
             )::newRequest;
@@ -440,7 +441,7 @@ public class InsertFromValues implements LogicalPlan {
                     ? ShardUpsertRequest.DuplicateKeyAction.IGNORE
                     : ShardUpsertRequest.DuplicateKeyAction.UPDATE_OR_FAIL,
                 true, // continueOnErrors
-                writerProjection.allTargetColumns().toArray(new Reference[0]),
+                writerProjection.allTargetColumns().stream().map(x -> x.column()).collect(Collectors.toList()).toArray(new ColumnIdent[0]),
                 plannerContext.jobId(),
                 true
             )::newRequest;

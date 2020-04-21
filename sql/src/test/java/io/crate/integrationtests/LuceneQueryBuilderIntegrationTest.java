@@ -27,6 +27,7 @@ import io.crate.types.DataType;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.search.SearchModule;
 import org.elasticsearch.test.ESIntegTestCase;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.List;
@@ -177,6 +178,7 @@ public class LuceneQueryBuilderIntegrationTest extends SQLTransportIntegrationTe
         assertThat(response.rowCount(), is(1L));
     }
 
+    @Ignore
     @Test
     public void testWithinQueryMatches() throws Exception {
         // test a regression where wrong lucene query was used and therefore did not return any results

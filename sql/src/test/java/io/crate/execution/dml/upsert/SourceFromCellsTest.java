@@ -298,7 +298,7 @@ public class SourceFromCellsTest extends CrateDummyClusterServiceUnitTest {
             tableInfo,
             tableInfo.concreteIndices()[0],
             GeneratedColumns.Validation.VALUE_MATCH,
-            List.copyOf(tableInfo.columns())
+            List.copyOf(tableInfo.columns().stream().map(x -> x.column()).collect(Collectors.toList()))
         );
         var payloads = List.of(Map.of("x", 10), Map.of("x", 20));
         var source = sourceGen.generateSourceAndCheckConstraints(new Object[] { payloads });
@@ -320,7 +320,7 @@ public class SourceFromCellsTest extends CrateDummyClusterServiceUnitTest {
             table,
             table.concreteIndices()[0],
             GeneratedColumns.Validation.VALUE_MATCH,
-            List.copyOf(table.columns())
+            List.copyOf(table.columns().stream().map(x -> x.column()).collect(Collectors.toList()))
         );
         Map<String, Object> obj = new HashMap<>();
         obj.put("x", 10);

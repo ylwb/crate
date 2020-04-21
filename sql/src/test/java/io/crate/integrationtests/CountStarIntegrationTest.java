@@ -22,6 +22,7 @@
 package io.crate.integrationtests;
 
 import io.crate.action.sql.SQLActionException;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import static org.hamcrest.core.Is.is;
@@ -78,6 +79,7 @@ public class CountStarIntegrationTest extends SQLTransportIntegrationTest {
         execute("select count(*) from test where non_existant = 'Some Value'");
     }
 
+    @Ignore
     @Test
     public void testCountRoutingClusteredById() throws Exception {
         execute("create table auto_id (" +

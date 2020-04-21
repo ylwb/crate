@@ -55,6 +55,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 public class ColumnIndexWriterProjector implements Projector {
 
@@ -111,7 +112,7 @@ public class ColumnIndexWriterProjector implements Projector {
                 ShardingUpsertExecutor.BULK_REQUEST_TIMEOUT_SETTING.setting().get(settings),
                 ignoreDuplicateKeys ? ShardWriteRequest.DuplicateKeyAction.IGNORE : ShardWriteRequest.DuplicateKeyAction.UPDATE_OR_FAIL,
                 true, // continueOnErrors
-                columnReferences.toArray(new Reference[columnReferences.size()]),
+                columnReferences.stream().map(x -> x.column()).collect(Collectors.toList()).toArray(new ColumnIdent[columnReferences.size()]),
                 jobId,
                 true
             )::newRequest;

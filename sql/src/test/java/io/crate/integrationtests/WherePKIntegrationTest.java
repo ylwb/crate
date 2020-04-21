@@ -24,6 +24,7 @@ package io.crate.integrationtests;
 import io.crate.testing.TestingHelpers;
 import org.elasticsearch.common.collect.MapBuilder;
 import org.hamcrest.Matchers;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.locationtech.spatial4j.shape.Point;
 
@@ -209,6 +210,7 @@ public class WherePKIntegrationTest extends SQLTransportIntegrationTest {
         }
     }
 
+    @Ignore
     @Test
     public void testEmptyClusteredByUnderId() throws Exception {
         // regression test that empty routing executes correctly
@@ -227,6 +229,7 @@ public class WherePKIntegrationTest extends SQLTransportIntegrationTest {
         assertThat(response.rowCount(), is(0L));
     }
 
+    @Ignore
     @Test
     public void testEmptyClusteredByExplicit() throws Exception {
         // regression test that empty routing executes correctly

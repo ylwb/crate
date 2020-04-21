@@ -29,6 +29,7 @@ import io.crate.testing.UseJdbc;
 import org.elasticsearch.common.collect.MapBuilder;
 import org.elasticsearch.test.ESIntegTestCase;
 import org.hamcrest.core.IsNull;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.locationtech.spatial4j.context.jts.JtsSpatialContext;
 import org.locationtech.spatial4j.shape.impl.PointImpl;
@@ -614,6 +615,7 @@ public class InsertIntoIntegrationTest extends SQLTransportIntegrationTest {
         assertThat(response.rows(), is(rowsOriginal));
     }
 
+    @Ignore
     @Test
     public void testInsertFromQueryWithGeoType() throws Exception {
         execute("create table t (p geo_point) clustered into 1 shards with (number_of_replicas=0)");
@@ -626,6 +628,7 @@ public class InsertIntoIntegrationTest extends SQLTransportIntegrationTest {
         assertThat(response.rowCount(), is(1L));
     }
 
+    @Ignore
     @Test
     @UseJdbc(0) // inserting geo-point array requires special treatment for PostgreSQL
     public void testInsertIntoGeoPointArray() throws Exception {

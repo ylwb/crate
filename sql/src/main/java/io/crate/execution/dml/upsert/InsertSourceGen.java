@@ -22,9 +22,9 @@
 
 package io.crate.execution.dml.upsert;
 
+import io.crate.metadata.ColumnIdent;
 import io.crate.metadata.TransactionContext;
 import io.crate.metadata.Functions;
-import io.crate.metadata.Reference;
 import io.crate.metadata.doc.DocSysColumns;
 import io.crate.metadata.doc.DocTableInfo;
 import org.elasticsearch.common.bytes.BytesReference;
@@ -33,7 +33,6 @@ import org.elasticsearch.common.xcontent.XContentFactory;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 public interface InsertSourceGen {
 
@@ -48,16 +47,15 @@ public interface InsertSourceGen {
                               DocTableInfo table,
                               String indexName,
                               GeneratedColumns.Validation validation,
-                              List<Reference> targets) {
-        if (targets.size() == 1 && targets.get(0).column().equals(DocSysColumns.RAW)) {
+                              List<ColumnIdent> targets) {
+        if (targets.size() == 1 && targets.get(0).equals(DocSysColumns.RAW)) {
             if (table.generatedColumns().isEmpty() && table.defaultExpressionColumns().isEmpty()) {
                 return new FromRawInsertSource();
             } else {
                 return new GeneratedColsFromRawInsertSource(txnCtx, functions, table.generatedColumns(), table.defaultExpressionColumns());
             }
         }
-        return new InsertSourceFromCells(txnCtx, functions, table, indexName, validation, targets.stream().map(x -> x.column()).collect(
-            Collectors.toList()));
+        return new InsertSourceFromCells(txnCtx, functions, table, indexName, validation, targets);
     }
 
 }

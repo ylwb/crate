@@ -134,7 +134,7 @@ public final class QueryTester implements AutoCloseable {
                 table,
                 table.concreteIndices()[0],
                 GeneratedColumns.Validation.NONE,
-                Collections.singletonList(table.getReference(ColumnIdent.fromPath(column)))
+                Collections.singletonList(table.getReference(ColumnIdent.fromPath(column)).column())
             );
             BytesReference source = sourceGen.generateSourceAndCheckConstraintsAsBytesReference(new Object[]{value});
             SourceToParse sourceToParse = new SourceToParse(

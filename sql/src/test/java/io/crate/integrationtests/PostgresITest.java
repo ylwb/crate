@@ -33,6 +33,7 @@ import org.elasticsearch.test.ESIntegTestCase;
 import org.hamcrest.Matchers;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.postgresql.PGProperty;
 import org.postgresql.geometric.PGpoint;
@@ -337,6 +338,7 @@ public class PostgresITest extends SQLTransportIntegrationTest {
         }
     }
 
+    @Ignore
     @Test
     public void test_geo_types_arrays() throws Exception {
         try (Connection conn = DriverManager.getConnection(url(RW), properties)) {
