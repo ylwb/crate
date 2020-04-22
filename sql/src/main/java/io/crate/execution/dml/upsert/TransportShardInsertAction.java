@@ -108,9 +108,11 @@ public final class TransportShardInsertAction extends TransportShardAction<Shard
     }
 
     @Override
-    protected WritePrimaryResult<ShardInsertRequest, ShardResponse> processRequestItems(IndexShard indexShard,
-                                                                                        ShardInsertRequest request,
-                                                                                        AtomicBoolean killed) {
+    protected WritePrimaryResult<ShardInsertRequest, ShardResponse> processRequestItems(
+        IndexShard indexShard,
+        ShardInsertRequest request,
+        AtomicBoolean killed
+    ) {
         ShardResponse shardResponse =
             request.returnValues() == null ? new ShardResponse() : new ShardResponse(request.returnValues());
         String indexName = request.index();
@@ -135,7 +137,6 @@ public final class TransportShardInsertAction extends TransportShardAction<Shard
 
         Translog.Location translogLocation = null;
         for (ShardInsertRequest.Item item : request.items()) {
-            int location = item.location();
             if (killed.get()) {
                 // set failure on response and skip all next items.
                 // this way replica operation will be executed, but only items with a valid source (= was processed on primary)
@@ -144,14 +145,7 @@ public final class TransportShardInsertAction extends TransportShardAction<Shard
                 break;
             }
             try {
-                IndexItemResponse response = insert(request, item, indexShard, insertSourceGen, returnValueGen);
-                if (response.translog != null) {
-                    shardResponse.add(location);
-                    translogLocation = response.translog;
-                    if (response.resultRows != null) {
-                        shardResponse.addResultRows(response.resultRows);
-                    }
-                }
+                translogLocation = insert(shardResponse, request, item, indexShard, insertSourceGen, returnValueGen);
             } catch (Exception e) {
                 if (retryPrimaryException(e)) {
                     if (e instanceof RuntimeException) {
@@ -174,7 +168,7 @@ public final class TransportShardInsertAction extends TransportShardAction<Shard
                     break;
                 }
 
-                shardResponse.add(location,
+                shardResponse.add(item.location(),
                                   new ShardResponse.Failure(
                                       item.id(),
                                       userFriendlyCrateExceptionTopOnly(e),
@@ -184,7 +178,8 @@ public final class TransportShardInsertAction extends TransportShardAction<Shard
         return new WritePrimaryResult<>(request, shardResponse, translogLocation, null, indexShard);
     }
 
-    private IndexItemResponse insert(
+    private Translog.Location insert(
+        ShardResponse shardResponse,
         ShardInsertRequest request,
         ShardInsertRequest.Item item,
         IndexShard indexShard,
@@ -259,7 +254,7 @@ public final class TransportShardInsertAction extends TransportShardAction<Shard
                 // update the seqNo and version on request for the replicas
                 item.seqNo(result.getSeqNo());
                 item.version(result.getVersion());
-                Object[] returnvalues = null;
+                Object[] resultRows = null;
                 if (returnGen != null) {
                     // This optimizes for the case where the insert value is already string-based, so only parse the source
                     // when return values are requested
@@ -269,7 +264,7 @@ public final class TransportShardInsertAction extends TransportShardAction<Shard
                             DeprecationHandler.THROW_UNSUPPORTED_OPERATION,
                             BytesReference.toBytes(rawSource)).map();
                     }
-                    returnvalues = returnGen.generateReturnValues(
+                    resultRows = returnGen.generateReturnValues(
                         // return -1 as docId, the docId can only be retrieved by fetching the inserted document again, which
                         // we want to avoid. The docId is anyway just valid with the lifetime of a searcher and can change afterwards.
                         new Doc(
@@ -284,7 +279,11 @@ public final class TransportShardInsertAction extends TransportShardAction<Shard
                         )
                     );
                 }
-                return new IndexItemResponse(result.getTranslogLocation(), returnvalues);
+                if (result.getTranslogLocation() != null) {
+                    shardResponse.add(item.location());
+                }
+                shardResponse.addResultRows(resultRows);
+                return result.getTranslogLocation();
 
             case FAILURE:
                 Exception failure = result.getFailure();
@@ -295,18 +294,6 @@ public final class TransportShardInsertAction extends TransportShardAction<Shard
             default:
                 throw new AssertionError(
                     "IndexResult must either succeed or fail. Required mapping updates must have been handled.");
-        }
-    }
-
-    static final class IndexItemResponse {
-        @Nullable
-        final Translog.Location translog;
-        @Nullable
-        final Object[] resultRows;
-
-        IndexItemResponse(@Nullable Translog.Location translog, @Nullable Object[] resultRows) {
-            this.translog = translog;
-            this.resultRows = resultRows;
         }
     }
 

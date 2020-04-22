@@ -46,7 +46,6 @@ import io.crate.execution.dml.TransportShardAction;
 import io.crate.execution.dml.upsert.DuplicateKeyAction;
 import io.crate.execution.dml.upsert.GeneratedColumns;
 import io.crate.execution.dml.upsert.InsertSourceFromCells;
-import io.crate.execution.dml.upsert.ShardInsertRequest;
 import io.crate.execution.dml.upsert.ShardUpsertRequest;
 import io.crate.execution.dsl.projection.ColumnIndexWriterProjection;
 import io.crate.execution.dsl.projection.builder.InputColumns;
@@ -72,7 +71,6 @@ import io.crate.planner.DependencyCarrier;
 import io.crate.planner.ExecutionPlan;
 import io.crate.planner.PlannerContext;
 import io.crate.types.DataType;
-import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.admin.indices.create.CreatePartitionsRequest;
 import org.elasticsearch.action.admin.indices.create.TransportCreatePartitionsAction;
@@ -223,85 +221,45 @@ public class InsertFromValues implements LogicalPlan {
 
         List<Symbol> returnValues = this.writerProjection.returnValues();
         // Optimization for insert usecase
-        if (updateColumnNames != null && updateColumnNames.length == 0 &&
-            plannerContext.clusterState().getNodes().getMinNodeVersion().onOrAfter(Version.V_4_2_0)
-        ) {
-            Function<ShardId, ShardInsertRequest> newRequest = new ShardInsertRequest.Builder(
-                plannerContext.transactionContext().sessionSettings(),
-                BULK_REQUEST_TIMEOUT_SETTING.setting().get(dependencies.settings()),
-                writerProjection.isIgnoreDuplicateKeys()
-                    ? DuplicateKeyAction.IGNORE
-                    : DuplicateKeyAction.UPDATE_OR_FAIL,
-                rows.size() > 1, // continueOnErrors
-                writerProjection.allTargetColumns().toArray(new Reference[0]),
-                plannerContext.jobId(),
-                false,
-                returnValues.toArray(new Symbol[0])
-            )::newRequest;
 
-            var insertValues = new InputRow(insertInputs);
-            Function<String, ShardInsertRequest.Item> itemFactory = id -> new ShardInsertRequest.Item(
+        Function<ShardId, ShardUpsertRequest> newRequest = new ShardUpsertRequest.Builder(
+            plannerContext.transactionContext().sessionSettings(),
+            BULK_REQUEST_TIMEOUT_SETTING.setting().get(dependencies.settings()),
+            writerProjection.isIgnoreDuplicateKeys()
+                ? DuplicateKeyAction.IGNORE
+                : DuplicateKeyAction.UPDATE_OR_FAIL,
+            rows.size() > 1, // continueOnErrors
+            updateColumnNames,
+            writerProjection.allTargetColumns().toArray(new Reference[0]),
+            returnValues.isEmpty() ? null : returnValues.toArray(new Symbol[0]),
+            plannerContext.jobId(),
+            false)::newRequest;
+
+        InputRow insertValues = new InputRow(insertInputs);
+
+        Function<String, ShardUpsertRequest.Item> itemFactory = id ->
+            new ShardUpsertRequest.Item(
                 id,
+                assignmentSources,
                 insertValues.materialize(),
-                null,
-                null,
-                null
-            );
+                null, null, null);
 
-            executeAction(
-                dependencies,
-                context,
-                plannerContext,
-                consumer,
-                returnValues,
-                primaryKeyInputs,
-                rows,
-                clusterByInput,
-                indexNameResolver,
-                tableInfo,
-                newRequest,
-                itemFactory,
-                dependencies.transportActionProvider().transportShardInsertAction()
-            );
-        } else {
-            Function<ShardId, ShardUpsertRequest> newRequest = new ShardUpsertRequest.Builder(
-                plannerContext.transactionContext().sessionSettings(),
-                BULK_REQUEST_TIMEOUT_SETTING.setting().get(dependencies.settings()),
-                writerProjection.isIgnoreDuplicateKeys()
-                    ? DuplicateKeyAction.IGNORE
-                    : DuplicateKeyAction.UPDATE_OR_FAIL,
-                rows.size() > 1, // continueOnErrors
-                updateColumnNames,
-                writerProjection.allTargetColumns().toArray(new Reference[0]),
-                returnValues.isEmpty() ? null : returnValues.toArray(new Symbol[0]),
-                plannerContext.jobId(),
-                false)::newRequest;
+        executeAction(
+            dependencies,
+            context,
+            plannerContext,
+            consumer,
+            returnValues,
+            primaryKeyInputs,
+            rows,
+            clusterByInput,
+            indexNameResolver,
+            tableInfo,
+            newRequest,
+            itemFactory,
+            dependencies.transportActionProvider().transportShardUpsertAction()
+        );
 
-            InputRow insertValues = new InputRow(insertInputs);
-
-            Function<String, ShardUpsertRequest.Item> itemFactory = id ->
-                new ShardUpsertRequest.Item(
-                    id,
-                    assignmentSources,
-                    insertValues.materialize(),
-                    null, null, null);
-
-            executeAction(
-                dependencies,
-                context,
-                plannerContext,
-                consumer,
-                returnValues,
-                primaryKeyInputs,
-                rows,
-                clusterByInput,
-                indexNameResolver,
-                tableInfo,
-                newRequest,
-                itemFactory,
-                dependencies.transportActionProvider().transportShardUpsertAction()
-            );
-        }
     }
 
     public <TReq extends ShardRequest<TReq, TItem>, TItem extends ShardRequest.Item> void executeAction(
@@ -381,9 +339,7 @@ public class InsertFromValues implements LogicalPlan {
                                                      PlannerContext plannerContext,
                                                      List<Row> bulkParams,
                                                      SubQueryResults subQueryResults) {
-        DocTableInfo tableInfo = dependencies
-            .schemas()
-            .getTableInfo(writerProjection.tableIdent(), Operation.INSERT);
+
 
         String[] updateColumnNames;
         Assignments assignments;
@@ -431,72 +387,23 @@ public class InsertFromValues implements LogicalPlan {
 
         // plain insert usecase. No conflict on update, returnvalues are not supported anyway on bulk,
         // only supported on 4.2 or after
-        if (updateColumnNames == null && updateColumnNames.length == 0 &&
-            plannerContext.clusterState().getNodes().getMinNodeVersion().onOrAfter(Version.V_4_2_0)
-        ) {
-            Function<ShardId, ShardInsertRequest> newRequest = new ShardInsertRequest.Builder(
-                plannerContext.transactionContext().sessionSettings(),
-                BULK_REQUEST_TIMEOUT_SETTING.setting().get(dependencies.settings()),
-                writerProjection.isIgnoreDuplicateKeys()
-                    ? DuplicateKeyAction.IGNORE
-                    : DuplicateKeyAction.UPDATE_OR_FAIL,
-                true, // continueOnErrors
-                writerProjection.allTargetColumns().toArray(new Reference[0]),
-                plannerContext.jobId(),
-                true,
-                null
-            )::newRequest;
 
-            InputRow insertValues = new InputRow(insertInputs);
+        Function<ShardId, ShardUpsertRequest> newRequest = new ShardUpsertRequest.Builder(
+            plannerContext.transactionContext().sessionSettings(),
+            BULK_REQUEST_TIMEOUT_SETTING.setting().get(dependencies.settings()),
+            writerProjection.isIgnoreDuplicateKeys()
+                ? DuplicateKeyAction.IGNORE
+                : DuplicateKeyAction.UPDATE_OR_FAIL,
+            true, // continueOnErrors
+            updateColumnNames,
+            writerProjection.allTargetColumns().toArray(new Reference[0]),
+            null,
+            plannerContext.jobId(),
+            true
+        )::newRequest;
 
-            Function<String, ShardInsertRequest.Item> itemFactory = id -> new ShardInsertRequest.Item(
-                id,
-                insertValues.materialize(),
-                null,
-                null,
-                null
-            );
-
-            Function<Symbol[], GroupRowsByShard<ShardInsertRequest, ShardInsertRequest.Item>> grouper =
-                (assignmentSources) -> createRowsByShardGrouper(
-                    indexNameResolver,
-                    context,
-                    plannerContext,
-                    dependencies.clusterService(),
-                    itemFactory
-                    );
-
-            return executeBulkAction(
-                dependencies,
-                plannerContext,
-                primaryKeyInputs,
-                clusterByInput,
-                indexNameResolver,
-                tableInfo,
-                bulkParams,
-                subQueryResults,
-                assignments,
-                newRequest,
-                grouper,
-                dependencies.transportActionProvider().transportShardInsertAction()
-            );
-        } else {
-            Function<ShardId, ShardUpsertRequest> newRequest = new ShardUpsertRequest.Builder(
-                plannerContext.transactionContext().sessionSettings(),
-                BULK_REQUEST_TIMEOUT_SETTING.setting().get(dependencies.settings()),
-                writerProjection.isIgnoreDuplicateKeys()
-                    ? DuplicateKeyAction.IGNORE
-                    : DuplicateKeyAction.UPDATE_OR_FAIL,
-                true, // continueOnErrors
-                updateColumnNames,
-                writerProjection.allTargetColumns().toArray(new Reference[0]),
-                null,
-                plannerContext.jobId(),
-                true
-            )::newRequest;
-
-            Function<Symbol[], GroupRowsByShard<ShardUpsertRequest, ShardUpsertRequest.Item>> grouper =
-                (assignmentSources) -> createRowsByShardGrouper(
+        Function<Symbol[], GroupRowsByShard<ShardUpsertRequest, ShardUpsertRequest.Item>> grouper =
+            (assignmentSources) -> createRowsByShardGrouper(
                 assignmentSources,
                 insertInputs,
                 indexNameResolver,
@@ -504,21 +411,23 @@ public class InsertFromValues implements LogicalPlan {
                 plannerContext,
                 dependencies.clusterService());
 
-            return executeBulkAction(
-                dependencies,
-                plannerContext,
-                primaryKeyInputs,
-                clusterByInput,
-                indexNameResolver,
-                tableInfo,
-                bulkParams,
-                subQueryResults,
-                assignments,
-                newRequest,
-                grouper,
-                dependencies.transportActionProvider().transportShardUpsertAction()
-            );
-        }
+        DocTableInfo tableInfo = dependencies.schemas().getTableInfo(writerProjection.tableIdent(), Operation.INSERT);
+
+        return executeBulkAction(
+            dependencies,
+            plannerContext,
+            primaryKeyInputs,
+            clusterByInput,
+            indexNameResolver,
+            tableInfo,
+            bulkParams,
+            subQueryResults,
+            assignments,
+            newRequest,
+            grouper,
+            dependencies.transportActionProvider().transportShardUpsertAction()
+        );
+
     }
 
     private <TReq extends ShardRequest<TReq, TItem>, TItem extends ShardRequest.Item> List<CompletableFuture<Long>> executeBulkAction(
