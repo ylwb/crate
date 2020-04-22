@@ -234,7 +234,8 @@ public class InsertFromValues implements LogicalPlan {
                 rows.size() > 1, // continueOnErrors
                 writerProjection.allTargetColumns().toArray(new Reference[0]),
                 plannerContext.jobId(),
-                false
+                false,
+                null
             )::newRequest;
 
             var insertValues = new InputRow(insertInputs);
@@ -441,7 +442,8 @@ public class InsertFromValues implements LogicalPlan {
                 true, // continueOnErrors
                 writerProjection.allTargetColumns().toArray(new Reference[0]),
                 plannerContext.jobId(),
-                true
+                true,
+                null
             )::newRequest;
 
             InputRow insertValues = new InputRow(insertInputs);

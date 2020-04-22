@@ -26,6 +26,7 @@ import io.crate.Streamer;
 import io.crate.common.collections.EnumSets;
 import io.crate.execution.dml.ShardRequest;
 import io.crate.execution.dml.upsert.ShardWriteRequest.DuplicateKeyAction;
+import io.crate.expression.symbol.Symbol;
 import io.crate.expression.symbol.Symbols;
 import io.crate.metadata.Reference;
 import io.crate.metadata.settings.SessionSettings;
@@ -53,6 +54,9 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
 
     private EnumSet<Property> properties;
 
+    @Nullable
+    private Symbol[] returnValues;
+
     public ShardInsertRequest(
         ShardId shardId,
         UUID jobId,
@@ -60,12 +64,14 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
         Reference[] insertColumns,
         boolean continueOnError,
         boolean validateGeneratedColumns,
-        DuplicateKeyAction duplicateKeyAction
+        DuplicateKeyAction duplicateKeyAction,
+        @Nullable Symbol[] returnValues
     ) {
         super(shardId, jobId);
         this.sessionSettings = sessionSettings;
         this.insertColumns = insertColumns;
         this.properties = Property.toEnumSet(continueOnError, validateGeneratedColumns, duplicateKeyAction);
+        this.returnValues = returnValues;
     }
 
     public ShardInsertRequest(StreamInput in) throws IOException {
@@ -85,6 +91,13 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
         items = new ArrayList<>(numItems);
         for (int i = 0; i < numItems; i++) {
             items.add(new ShardInsertRequest.Item(in, insertValuesStreamer));
+        }
+        int returnValuesSize = in.readVInt();
+        if (returnValuesSize > 0) {
+            returnValues = new Symbol[returnValuesSize];
+            for (int i = 0; i < returnValuesSize; i++) {
+                returnValues[i] = Symbols.fromStream(in);
+            }
         }
     }
 
@@ -107,6 +120,14 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
         for (ShardInsertRequest.Item item : items) {
             item.writeTo(out, insertValuesStreamer);
         }
+        if (returnValues != null) {
+            out.writeVInt(returnValues.length);
+            for (Symbol returnValue : returnValues) {
+                Symbols.toStream(returnValue, out);
+            }
+        } else {
+            out.writeVInt(0);
+        }
     }
 
     public SessionSettings sessionSettings() {
@@ -114,8 +135,8 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
     }
 
     @Nullable
-    public String[] updateColumns() {
-        return null;
+    public Symbol[] returnValues() {
+        return returnValues;
     }
 
     public Reference[] insertColumns() {
@@ -275,6 +296,8 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
         private final boolean validateGeneratedColumns;
         private final boolean continueOnError;
         private final DuplicateKeyAction duplicateKeyAction;
+        @Nullable
+        private Symbol[] returnValues;
 
         public Builder(
             SessionSettings sessionSettings,
@@ -283,7 +306,9 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
             boolean continueOnError,
             Reference[] insertColumns,
             UUID jobId,
-            boolean validateGeneratedColumns) {
+            boolean validateGeneratedColumns,
+            @Nullable Symbol[] returnValues
+        ) {
             this.sessionSettings = sessionSettings;
             this.timeout = timeout;
             this.insertColumns = insertColumns;
@@ -291,6 +316,7 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
             this.validateGeneratedColumns = validateGeneratedColumns;
             this.continueOnError = continueOnError;
             this.duplicateKeyAction = duplicateKeyAction;
+            this.returnValues = returnValues;
         }
 
         public ShardInsertRequest newRequest(ShardId shardId) {
@@ -301,7 +327,8 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
                 insertColumns,
                 continueOnError,
                 validateGeneratedColumns,
-                duplicateKeyAction
+                duplicateKeyAction,
+                returnValues
             ).timeout(timeout);
         }
     }

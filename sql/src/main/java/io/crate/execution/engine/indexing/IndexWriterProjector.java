@@ -114,7 +114,8 @@ public class IndexWriterProjector implements Projector {
                 true,
                 new Reference[]{rawSourceReference},
                 jobId,
-                false
+                false,
+                null
             )::newRequest;
 
             Function<String, ShardInsertRequest.Item> itemFactory =

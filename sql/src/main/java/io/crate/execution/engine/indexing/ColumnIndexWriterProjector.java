@@ -113,7 +113,8 @@ public class ColumnIndexWriterProjector implements Projector {
                 true, // continueOnErrors
                 columnReferences.toArray(new Reference[columnReferences.size()]),
                 jobId,
-                true
+                true,
+                null
             )::newRequest;
 
             InputRow insertValues = new InputRow(insertInputs);
