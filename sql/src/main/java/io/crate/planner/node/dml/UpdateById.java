@@ -27,6 +27,7 @@ import io.crate.analyze.where.DocKeys;
 import io.crate.data.Row;
 import io.crate.data.RowConsumer;
 import io.crate.execution.dml.ShardRequestExecutor;
+import io.crate.execution.dml.upsert.DuplicateKeyAction;
 import io.crate.execution.dml.upsert.ShardUpsertRequest;
 import io.crate.execution.engine.indexing.ShardingUpsertExecutor;
 import io.crate.expression.symbol.Assignments;
@@ -112,7 +113,7 @@ public final class UpdateById implements Plan {
         ShardUpsertRequest.Builder requestBuilder = new ShardUpsertRequest.Builder(
             txnCtx.sessionSettings(),
             ShardingUpsertExecutor.BULK_REQUEST_TIMEOUT_SETTING.setting().get(clusterService.state().metaData().settings()),
-            ShardUpsertRequest.DuplicateKeyAction.UPDATE_OR_FAIL,
+            DuplicateKeyAction.UPDATE_OR_FAIL,
             true,
             assignments.targetNames(),
             null, // missing assignments are for INSERT .. ON DUPLICATE KEY UPDATE

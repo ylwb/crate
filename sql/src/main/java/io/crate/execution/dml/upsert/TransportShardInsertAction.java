@@ -26,7 +26,6 @@ import io.crate.Constants;
 import io.crate.execution.ddl.SchemaUpdateClient;
 import io.crate.execution.dml.ShardResponse;
 import io.crate.execution.dml.TransportShardAction;
-import io.crate.execution.dml.upsert.ShardWriteRequest.DuplicateKeyAction;
 import io.crate.execution.jobs.TasksService;
 import io.crate.expression.reference.Doc;
 import io.crate.metadata.Functions;
@@ -133,7 +132,6 @@ public final class TransportShardInsertAction extends TransportShardAction<Shard
         ReturnValueGen returnValueGen = request.returnValues() == null
             ? null
             : new ReturnValueGen(functions, txnCtx, tableInfo, request.returnValues());
-
 
         Translog.Location translogLocation = null;
         for (ShardInsertRequest.Item item : request.items()) {

@@ -25,7 +25,6 @@ package io.crate.execution.dml.upsert;
 import io.crate.Streamer;
 import io.crate.common.collections.EnumSets;
 import io.crate.execution.dml.ShardRequest;
-import io.crate.execution.dml.upsert.ShardWriteRequest.DuplicateKeyAction;
 import io.crate.expression.symbol.Symbol;
 import io.crate.expression.symbol.Symbols;
 import io.crate.metadata.Reference;
@@ -151,7 +150,7 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
         return Property.validateConstraints(properties);
     }
 
-    public ShardWriteRequest.DuplicateKeyAction duplicateKeyAction() {
+    public DuplicateKeyAction duplicateKeyAction() {
         return Property.duplicationAction(properties);
     }
 
@@ -302,7 +301,7 @@ public final class ShardInsertRequest extends ShardRequest<ShardInsertRequest, S
         public Builder(
             SessionSettings sessionSettings,
             TimeValue timeout,
-            ShardWriteRequest.DuplicateKeyAction duplicateKeyAction,
+            DuplicateKeyAction duplicateKeyAction,
             boolean continueOnError,
             Reference[] insertColumns,
             UUID jobId,

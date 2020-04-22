@@ -22,7 +22,6 @@
 
 package io.crate.execution.dml.upsert;
 
-import io.crate.execution.dml.upsert.ShardWriteRequest.DuplicateKeyAction;
 import io.crate.expression.symbol.Literal;
 import io.crate.expression.symbol.Symbol;
 import io.crate.metadata.Reference;

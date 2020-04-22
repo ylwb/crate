@@ -38,8 +38,8 @@ import javax.annotation.Nullable;
 
 import com.google.common.collect.Iterables;
 
+import io.crate.execution.dml.upsert.DuplicateKeyAction;
 import io.crate.execution.dml.upsert.ShardUpsertRequest;
-import io.crate.execution.dml.upsert.ShardWriteRequest;
 import org.elasticsearch.Version;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.metadata.IndexMetaData;
@@ -528,7 +528,7 @@ public class ProjectionToProjectorVisitor
         ShardUpsertRequest.Builder builder = new ShardUpsertRequest.Builder(
             context.txnCtx.sessionSettings(),
             ShardingUpsertExecutor.BULK_REQUEST_TIMEOUT_SETTING.setting().get(settings),
-            ShardWriteRequest.DuplicateKeyAction.UPDATE_OR_FAIL,
+            DuplicateKeyAction.UPDATE_OR_FAIL,
             false,
             projection.assignmentsColumns(),
             null,

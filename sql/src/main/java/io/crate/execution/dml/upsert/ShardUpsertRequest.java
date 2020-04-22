@@ -23,6 +23,7 @@
 package io.crate.execution.dml.upsert;
 
 import io.crate.Streamer;
+import io.crate.execution.dml.ShardRequest;
 import io.crate.expression.symbol.Symbol;
 import io.crate.expression.symbol.Symbols;
 import io.crate.metadata.Reference;
@@ -44,7 +45,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-public final class ShardUpsertRequest extends ShardWriteRequest<ShardUpsertRequest, ShardUpsertRequest.Item> {
+public final class ShardUpsertRequest extends ShardRequest<ShardUpsertRequest, ShardUpsertRequest.Item> {
 
     private SessionSettings sessionSettings;
 
@@ -176,40 +177,33 @@ public final class ShardUpsertRequest extends ShardWriteRequest<ShardUpsertReque
     }
 
     @Nullable
-    @Override
     public SessionSettings sessionSettings() {
         return sessionSettings;
     }
 
     @Nullable
-    @Override
     public Symbol[] returnValues() {
         return returnValues;
     }
 
     @Nullable
-    @Override
     public String[] updateColumns() {
         return updateColumns;
     }
 
     @Nullable
-    @Override
     public Reference[] insertColumns() {
         return insertColumns;
     }
 
-    @Override
     public boolean continueOnError() {
         return continueOnError;
     }
 
-    @Override
     public boolean validateConstraints() {
         return validateConstraints;
     }
 
-    @Override
     public DuplicateKeyAction duplicateKeyAction() {
         return duplicateKeyAction;
     }
@@ -251,7 +245,7 @@ public final class ShardUpsertRequest extends ShardWriteRequest<ShardUpsertReque
     /**
      * A single update item.
      */
-    public static final class Item extends ShardWriteRequest.Item {
+    public static final class Item extends ShardRequest.Item {
 
         @Nullable
         private BytesReference source;
@@ -275,7 +269,7 @@ public final class ShardUpsertRequest extends ShardWriteRequest<ShardUpsertReque
                     @Nullable Long seqNo,
                     @Nullable Long primaryTerm
         ) {
-            super(id, version, seqNo, primaryTerm);
+            super(id);
             this.updateAssignments = updateAssignments;
             if (version != null) {
                 this.version = version;
@@ -290,12 +284,10 @@ public final class ShardUpsertRequest extends ShardWriteRequest<ShardUpsertReque
         }
 
         @Nullable
-        @Override
         public BytesReference source() {
             return source;
         }
 
-        @Override
         public void source(BytesReference source) {
             this.source = source;
         }

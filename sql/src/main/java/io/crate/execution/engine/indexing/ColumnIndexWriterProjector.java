@@ -29,9 +29,9 @@ import io.crate.data.Projector;
 import io.crate.data.Row;
 import io.crate.execution.TransportActionProvider;
 import io.crate.execution.dml.ShardRequest;
+import io.crate.execution.dml.upsert.DuplicateKeyAction;
 import io.crate.execution.dml.upsert.ShardInsertRequest;
 import io.crate.execution.dml.upsert.ShardUpsertRequest;
-import io.crate.execution.dml.upsert.ShardWriteRequest;
 import io.crate.execution.engine.collect.CollectExpression;
 import io.crate.execution.engine.collect.RowShardResolver;
 import io.crate.execution.jobs.NodeJobsCounter;
@@ -108,7 +108,7 @@ public class ColumnIndexWriterProjector implements Projector {
             Function<ShardId, ShardInsertRequest> requestFactory = new ShardInsertRequest.Builder(
                 txnCtx.sessionSettings(),
                 ShardingUpsertExecutor.BULK_REQUEST_TIMEOUT_SETTING.setting().get(settings),
-                ignoreDuplicateKeys ? ShardWriteRequest.DuplicateKeyAction.IGNORE : ShardWriteRequest.DuplicateKeyAction.UPDATE_OR_FAIL,
+                ignoreDuplicateKeys ? DuplicateKeyAction.IGNORE : DuplicateKeyAction.UPDATE_OR_FAIL,
                 true, // continueOnErrors
                 columnReferences.toArray(new Reference[columnReferences.size()]),
                 jobId,
@@ -146,7 +146,7 @@ public class ColumnIndexWriterProjector implements Projector {
             Function<ShardId, ShardUpsertRequest> requestFactory = new ShardUpsertRequest.Builder(
                 txnCtx.sessionSettings(),
                 ShardingUpsertExecutor.BULK_REQUEST_TIMEOUT_SETTING.setting().get(settings),
-                ignoreDuplicateKeys ? ShardWriteRequest.DuplicateKeyAction.IGNORE : ShardWriteRequest.DuplicateKeyAction.UPDATE_OR_FAIL,
+                ignoreDuplicateKeys ? DuplicateKeyAction.IGNORE : DuplicateKeyAction.UPDATE_OR_FAIL,
                 true, // continueOnErrors
                 updateColumnNames,
                 columnReferences.toArray(new Reference[columnReferences.size()]),

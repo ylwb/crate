@@ -43,6 +43,7 @@ import io.crate.exceptions.SQLExceptions;
 import io.crate.execution.dml.ShardRequest;
 import io.crate.execution.dml.ShardResponse;
 import io.crate.execution.dml.TransportShardAction;
+import io.crate.execution.dml.upsert.DuplicateKeyAction;
 import io.crate.execution.dml.upsert.GeneratedColumns;
 import io.crate.execution.dml.upsert.InsertSourceFromCells;
 import io.crate.execution.dml.upsert.ShardInsertRequest;
@@ -229,8 +230,8 @@ public class InsertFromValues implements LogicalPlan {
                 plannerContext.transactionContext().sessionSettings(),
                 BULK_REQUEST_TIMEOUT_SETTING.setting().get(dependencies.settings()),
                 writerProjection.isIgnoreDuplicateKeys()
-                    ? ShardUpsertRequest.DuplicateKeyAction.IGNORE
-                    : ShardUpsertRequest.DuplicateKeyAction.UPDATE_OR_FAIL,
+                    ? DuplicateKeyAction.IGNORE
+                    : DuplicateKeyAction.UPDATE_OR_FAIL,
                 rows.size() > 1, // continueOnErrors
                 writerProjection.allTargetColumns().toArray(new Reference[0]),
                 plannerContext.jobId(),
@@ -267,8 +268,8 @@ public class InsertFromValues implements LogicalPlan {
                 plannerContext.transactionContext().sessionSettings(),
                 BULK_REQUEST_TIMEOUT_SETTING.setting().get(dependencies.settings()),
                 writerProjection.isIgnoreDuplicateKeys()
-                    ? ShardUpsertRequest.DuplicateKeyAction.IGNORE
-                    : ShardUpsertRequest.DuplicateKeyAction.UPDATE_OR_FAIL,
+                    ? DuplicateKeyAction.IGNORE
+                    : DuplicateKeyAction.UPDATE_OR_FAIL,
                 rows.size() > 1, // continueOnErrors
                 updateColumnNames,
                 writerProjection.allTargetColumns().toArray(new Reference[0]),
@@ -437,8 +438,8 @@ public class InsertFromValues implements LogicalPlan {
                 plannerContext.transactionContext().sessionSettings(),
                 BULK_REQUEST_TIMEOUT_SETTING.setting().get(dependencies.settings()),
                 writerProjection.isIgnoreDuplicateKeys()
-                    ? ShardUpsertRequest.DuplicateKeyAction.IGNORE
-                    : ShardUpsertRequest.DuplicateKeyAction.UPDATE_OR_FAIL,
+                    ? DuplicateKeyAction.IGNORE
+                    : DuplicateKeyAction.UPDATE_OR_FAIL,
                 true, // continueOnErrors
                 writerProjection.allTargetColumns().toArray(new Reference[0]),
                 plannerContext.jobId(),
@@ -484,8 +485,8 @@ public class InsertFromValues implements LogicalPlan {
                 plannerContext.transactionContext().sessionSettings(),
                 BULK_REQUEST_TIMEOUT_SETTING.setting().get(dependencies.settings()),
                 writerProjection.isIgnoreDuplicateKeys()
-                    ? ShardUpsertRequest.DuplicateKeyAction.IGNORE
-                    : ShardUpsertRequest.DuplicateKeyAction.UPDATE_OR_FAIL,
+                    ? DuplicateKeyAction.IGNORE
+                    : DuplicateKeyAction.UPDATE_OR_FAIL,
                 true, // continueOnErrors
                 updateColumnNames,
                 writerProjection.allTargetColumns().toArray(new Reference[0]),
