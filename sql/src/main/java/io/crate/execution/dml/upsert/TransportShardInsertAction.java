@@ -22,13 +22,13 @@
 
 package io.crate.execution.dml.upsert;
 
-import com.google.common.annotations.VisibleForTesting;
 import io.crate.Constants;
 import io.crate.execution.ddl.SchemaUpdateClient;
 import io.crate.execution.dml.ShardResponse;
 import io.crate.execution.dml.TransportShardAction;
 import io.crate.execution.dml.upsert.ShardWriteRequest.DuplicateKeyAction;
 import io.crate.execution.jobs.TasksService;
+import io.crate.expression.reference.Doc;
 import io.crate.metadata.Functions;
 import io.crate.metadata.Reference;
 import io.crate.metadata.RelationName;
@@ -46,8 +46,11 @@ import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.inject.Singleton;
 import org.elasticsearch.common.lucene.uid.Versions;
+import org.elasticsearch.common.xcontent.DeprecationHandler;
+import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.common.xcontent.XContentType;
+import org.elasticsearch.common.xcontent.json.JsonXContent;
 import org.elasticsearch.index.VersionType;
 import org.elasticsearch.index.engine.Engine;
 import org.elasticsearch.index.engine.VersionConflictEngineException;
@@ -59,6 +62,7 @@ import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
 
+import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Map;
@@ -68,7 +72,7 @@ import static io.crate.exceptions.SQLExceptions.userFriendlyCrateExceptionTopOnl
 
 
 @Singleton
-public class TransportShardInsertAction extends TransportShardAction<ShardInsertRequest, ShardInsertRequest.Item> {
+public final class TransportShardInsertAction extends TransportShardAction<ShardInsertRequest, ShardInsertRequest.Item> {
 
     private static final String ACTION_NAME = "internal:crate:sql/data/insert";
 
@@ -108,7 +112,8 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
     protected WritePrimaryResult<ShardInsertRequest, ShardResponse> processRequestItems(IndexShard indexShard,
                                                                                         ShardInsertRequest request,
                                                                                         AtomicBoolean killed) {
-        ShardResponse shardResponse = new ShardResponse();
+        ShardResponse shardResponse =
+            request.returnValues() == null ? new ShardResponse() : new ShardResponse(request.returnValues());
         String indexName = request.index();
         DocTableInfo tableInfo = schemas.getTableInfo(RelationName.fromIndexName(indexName), Operation.INSERT);
         Reference[] insertColumns = request.insertColumns();
@@ -125,6 +130,10 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
                                                              valueValidation,
                                                              Arrays.asList(insertColumns));
 
+        ReturnValueGen returnValueGen = request.returnValues() == null
+            ? null
+            : new ReturnValueGen(functions, txnCtx, tableInfo, request.returnValues());
+
 
         Translog.Location translogLocation = null;
         for (ShardInsertRequest.Item item : request.items()) {
@@ -137,10 +146,13 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
                 break;
             }
             try {
-                Translog.Location translog = insert(request, item, indexShard, insertSourceGen);
-                if (translog != null) {
+                IndexItemResponse response = insert(request, item, indexShard, insertSourceGen, returnValueGen);
+                if (response.translog != null) {
                     shardResponse.add(location);
-                    translogLocation = translog;
+                    translogLocation = response.translog;
+                    if (response.resultRows != null) {
+                        shardResponse.addResultRows(response.resultRows);
+                    }
                 }
             } catch (Exception e) {
                 if (retryPrimaryException(e)) {
@@ -174,11 +186,13 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
         return new WritePrimaryResult<>(request, shardResponse, translogLocation, null, indexShard);
     }
 
-    @VisibleForTesting
-    protected Translog.Location insert(ShardInsertRequest request,
-                                       ShardInsertRequest.Item item,
-                                       IndexShard indexShard,
-                                       InsertSourceGen insertSourceGen) throws Exception {
+    private IndexItemResponse insert(
+        ShardInsertRequest request,
+        ShardInsertRequest.Item item,
+        IndexShard indexShard,
+        InsertSourceGen insertSourceGen,
+        @Nullable ReturnValueGen returnGen
+    ) throws Exception {
         BytesReference rawSource;
         Map<String, Object> source = null;
         try {
@@ -247,7 +261,32 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
                 // update the seqNo and version on request for the replicas
                 item.seqNo(result.getSeqNo());
                 item.version(result.getVersion());
-                return result.getTranslogLocation();
+                Object[] returnvalues = null;
+                if (returnGen != null) {
+                    // This optimizes for the case where the insert value is already string-based, so only parse the source
+                    // when return values are requested
+                    if (source == null) {
+                        source = JsonXContent.jsonXContent.createParser(
+                            NamedXContentRegistry.EMPTY,
+                            DeprecationHandler.THROW_UNSUPPORTED_OPERATION,
+                            BytesReference.toBytes(rawSource)).map();
+                    }
+                    returnvalues = returnGen.generateReturnValues(
+                        // return -1 as docId, the docId can only be retrieved by fetching the inserted document again, which
+                        // we want to avoid. The docId is anyway just valid with the lifetime of a searcher and can change afterwards.
+                        new Doc(
+                            -1,
+                            indexShard.shardId().getIndexName(),
+                            item.id(),
+                            result.getVersion(),
+                            result.getSeqNo(),
+                            result.getTerm(),
+                            source,
+                            rawSource::utf8ToString
+                        )
+                    );
+                }
+                return new IndexItemResponse(result.getTranslogLocation(), returnvalues);
 
             case FAILURE:
                 Exception failure = result.getFailure();
@@ -258,6 +297,18 @@ public class TransportShardInsertAction extends TransportShardAction<ShardInsert
             default:
                 throw new AssertionError(
                     "IndexResult must either succeed or fail. Required mapping updates must have been handled.");
+        }
+    }
+
+    static final class IndexItemResponse {
+        @Nullable
+        final Translog.Location translog;
+        @Nullable
+        final Object[] resultRows;
+
+        IndexItemResponse(@Nullable Translog.Location translog, @Nullable Object[] resultRows) {
+            this.translog = translog;
+            this.resultRows = resultRows;
         }
     }
 

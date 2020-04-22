@@ -221,8 +221,8 @@ public class InsertFromValues implements LogicalPlan {
                 subQueryResults));
 
         List<Symbol> returnValues = this.writerProjection.returnValues();
-        // plain insert usecase only. No conflict on update, no returnvalues
-        if (returnValues.isEmpty() && updateColumnNames != null && updateColumnNames.length == 0 &&
+        // Optimization for insert usecase
+        if (updateColumnNames != null && updateColumnNames.length == 0 &&
             plannerContext.clusterState().getNodes().getMinNodeVersion().onOrAfter(Version.V_4_2_0)
         ) {
             Function<ShardId, ShardInsertRequest> newRequest = new ShardInsertRequest.Builder(
@@ -235,7 +235,7 @@ public class InsertFromValues implements LogicalPlan {
                 writerProjection.allTargetColumns().toArray(new Reference[0]),
                 plannerContext.jobId(),
                 false,
-                null
+                returnValues.toArray(new Symbol[0])
             )::newRequest;
 
             var insertValues = new InputRow(insertInputs);
