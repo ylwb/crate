@@ -52,17 +52,17 @@ public class SysSchemaInfo implements SchemaInfo {
         Supplier<DiscoveryNode> localNode = clusterService::localNode;
         tableInfos.put(SysJobsTableInfo.IDENT.name(), SysJobsTableInfo.create(localNode));
         tableInfos.put(SysJobsLogTableInfo.IDENT.name(), SysJobsLogTableInfo.create(localNode));
-        tableInfos.put(SysOperationsTableInfo.IDENT.name(), new SysOperationsTableInfo(localNode));
+        tableInfos.put(SysOperationsTableInfo.IDENT.name(), SysOperationsTableInfo.create(localNode));
         tableInfos.put(SysOperationsLogTableInfo.IDENT.name(), SysOperationsLogTableInfo.create());
         tableInfos.put(SysChecksTableInfo.IDENT.name(), SysChecksTableInfo.create());
         tableInfos.put(SysNodeChecksTableInfo.IDENT.name(), new SysNodeChecksTableInfo());
         tableInfos.put(SysRepositoriesTableInfo.IDENT.name(), new SysRepositoriesTableInfo(clusterService.getClusterSettings().maskedSettings()));
         tableInfos.put(SysSnapshotsTableInfo.IDENT.name(), SysSnapshotsTableInfo.create());
         tableInfos.put(SysSummitsTableInfo.IDENT.name(), SysSummitsTableInfo.create());
-        tableInfos.put(SysAllocationsTableInfo.IDENT.name(), new SysAllocationsTableInfo());
+        tableInfos.put(SysAllocationsTableInfo.IDENT.name(), SysAllocationsTableInfo.create());
         tableInfos.put(SysHealth.IDENT.name(), SysHealth.create());
         tableInfos.put(SysMetricsTableInfo.NAME.name(), SysMetricsTableInfo.create(localNode));
-        tableInfos.put(SysSegmentsTableInfo.IDENT.name(), new SysSegmentsTableInfo(clusterService::localNode));
+        tableInfos.put(SysSegmentsTableInfo.IDENT.name(), SysSegmentsTableInfo.create(clusterService::localNode));
     }
 
     @Override

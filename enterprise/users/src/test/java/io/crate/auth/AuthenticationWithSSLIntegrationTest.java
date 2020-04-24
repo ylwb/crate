@@ -23,6 +23,7 @@ import io.crate.protocols.ssl.SslConfigSettings;
 import io.crate.testing.UseJdbc;
 import org.elasticsearch.common.settings.Settings;
 import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.postgresql.util.PSQLException;
@@ -32,6 +33,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLDecoder;
+import java.security.KeyStore;
+import java.security.Security;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -48,6 +51,7 @@ public class AuthenticationWithSSLIntegrationTest extends SQLTransportIntegratio
 
     private static File trustStoreFile;
     private static File keyStoreFile;
+    private static String defaultKeyStoreType = KeyStore.getDefaultType();
 
     public AuthenticationWithSSLIntegrationTest() {
         super(true);
@@ -57,6 +61,12 @@ public class AuthenticationWithSSLIntegrationTest extends SQLTransportIntegratio
     public static void beforeIntegrationTest() throws IOException {
         keyStoreFile = getAbsoluteFilePathFromClassPath("keystore.jks");
         trustStoreFile = getAbsoluteFilePathFromClassPath("truststore.jks");
+        Security.setProperty("keystore.type", "jks");
+    }
+
+    @AfterClass
+    public static void resetKeyStoreType() {
+        Security.setProperty("keystore.type", defaultKeyStoreType);
     }
 
     @Override
@@ -119,29 +129,6 @@ public class AuthenticationWithSSLIntegrationTest extends SQLTransportIntegratio
 
         properties.setProperty("user", "requiredssluser");
         try (Connection ignored = DriverManager.getConnection(sqlExecutor.jdbcUrl(), properties)) {}
-    }
-
-    @Test
-    public void testClientCertAuthWithValidCert() throws Exception {
-        Properties properties = new Properties();
-        properties.setProperty("user", "crate");
-        try (Connection conn = DriverManager.getConnection(sqlExecutor.jdbcUrl(), properties)) {
-            conn.createStatement().execute("CREATE USER localhost");
-            conn.createStatement().execute("GRANT DQL TO localhost");
-        }
-
-        try {
-            System.setProperty("javax.net.ssl.trustStore", keyStoreFile.getAbsolutePath());
-            System.setProperty("javax.net.ssl.trustStorePassword", "keystorePassword");
-            properties.setProperty("user", "localhost");
-            properties.setProperty("ssl", "true");
-            properties.setProperty("sslfactory", "org.postgresql.ssl.DefaultJavaSSLFactory");
-            try (Connection ignored = DriverManager.getConnection(sqlExecutor.jdbcUrl(), properties)) {
-            }
-        } finally {
-            System.clearProperty("javax.net.ssl.trustStore");
-            System.clearProperty("javax.net.ssl.trustStorePassword");
-        }
     }
 
     @Test

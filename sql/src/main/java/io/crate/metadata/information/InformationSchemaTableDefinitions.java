@@ -62,14 +62,14 @@ public class InformationSchemaTableDefinitions {
         tableDefinitions.put(InformationPartitionsTableInfo.IDENT, new StaticTableDefinition<>(
             informationSchemaIterables::partitions,
             (user, p) -> user.hasAnyPrivilege(Privilege.Clazz.TABLE, p.name().relationName().fqn()),
-            InformationPartitionsTableInfo.expressions()
+            InformationPartitionsTableInfo.create().expressions()
         ));
         tableDefinitions.put(InformationColumnsTableInfo.IDENT, new StaticTableDefinition<>(
             informationSchemaIterables::columns,
             (user, c) -> user.hasAnyPrivilege(Privilege.Clazz.TABLE, c.tableInfo.ident().fqn())
                          // we also need to check for views which have privileges set
                          || user.hasAnyPrivilege(Privilege.Clazz.VIEW, c.tableInfo.ident().fqn()),
-            InformationColumnsTableInfo.expression()
+            InformationColumnsTableInfo.create().expressions()
         ));
         tableDefinitions.put(InformationTableConstraintsTableInfo.IDENT, new StaticTableDefinition<>(
             informationSchemaIterables::constraints,
@@ -88,7 +88,7 @@ public class InformationSchemaTableDefinitions {
         tableDefinitions.put(InformationKeyColumnUsageTableInfo.IDENT, new StaticTableDefinition<>(
             informationSchemaIterables::keyColumnUsage,
             (user, k) -> user.hasAnyPrivilege(Privilege.Clazz.TABLE, k.getFQN()),
-            InformationKeyColumnUsageTableInfo.expressions()
+            InformationKeyColumnUsageTableInfo.create().expressions()
         ));
         tableDefinitions.put(InformationReferentialConstraintsTableInfo.IDENT, new StaticTableDefinition<>(
             () -> completedFuture(informationSchemaIterables.referentialConstraintsInfos()),

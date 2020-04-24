@@ -113,6 +113,7 @@ public class TestStatementBuilder {
         printStatement("ANALYZE");
     }
 
+
     @Test
     public void testEmptyOverClauseAfterFunction() {
         printStatement("SELECT avg(x) OVER () FROM t");
@@ -529,6 +530,7 @@ public class TestStatementBuilder {
     public void testCreateTableStmtBuilder() {
         printStatement("create table if not exists t (id integer primary key, name string)");
         printStatement("create table t (id double precision)");
+        printStatement("create table t (id character varying)");
         printStatement("create table t (id integer primary key, value array(double precision))");
         printStatement("create table t (id integer, value double precision not null)");
         printStatement("create table t (id integer primary key, name string)");
@@ -1448,6 +1450,27 @@ public class TestStatementBuilder {
         printStatement("create table test (col1 int, col2 AS (col1 + 1))");
 
         printStatement("create table test (col1 int, col2 AS col1['name'] + 1)");
+    }
+
+    @Test
+    public void testCreateTableWithCheckConstraints() {
+        printStatement("create table t (a int check(a >= 0), b boolean)");
+        printStatement("create table t (a int constraint over_zero check(a >= 0), b boolean)");
+        printStatement("create table t (a int, b boolean, check(a >= 0))");
+        printStatement("create table t (a int, b boolean, constraint over_zero check(a >= 0))");
+        printStatement("create table t (a int, b boolean check(b))");
+        printStatement("create table t (a int, b boolean constraint b check(b))");
+    }
+
+    @Test
+    public void testAlterTableAddColumnWithCheckConstraint() {
+        printStatement("alter table t add column a int check(a >= 0)");
+        printStatement("alter table t add column a int constraint over_zero check(a >= 0)");
+    }
+
+    @Test
+    public void testAlterTableDropCheckConstraint() {
+        printStatement("alter table t drop constraint check");
     }
 
     @Test

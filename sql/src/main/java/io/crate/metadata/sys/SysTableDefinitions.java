@@ -84,7 +84,7 @@ public class SysTableDefinitions {
             false));
         tableDefinitions.put(SysOperationsTableInfo.IDENT, new StaticTableDefinition<>(
             () -> completedFuture(jobsLogs.activeOperations()),
-            SysOperationsTableInfo.expressions(localNode),
+            SysOperationsTableInfo.create(localNode).expressions(),
             false));
         tableDefinitions.put(SysOperationsLogTableInfo.IDENT, new StaticTableDefinition<>(
             () -> completedFuture(jobsLogs.operationsLog()),
@@ -113,7 +113,7 @@ public class SysTableDefinitions {
         tableDefinitions.put(SysAllocationsTableInfo.IDENT, new StaticTableDefinition<>(
             () -> sysAllocations,
             (user, allocation) -> user.hasAnyPrivilege(Privilege.Clazz.TABLE, allocation.fqn()),
-            SysAllocationsTableInfo.expressions()
+            SysAllocationsTableInfo.create().expressions()
         ));
 
         SummitsIterable summits = new SummitsIterable();
@@ -135,7 +135,7 @@ public class SysTableDefinitions {
             false));
         tableDefinitions.put(SysSegmentsTableInfo.IDENT, new StaticTableDefinition<>(
             () -> completedFuture(shardSegmentInfos),
-            SysSegmentsTableInfo.expressions(clusterService::localNode),
+            SysSegmentsTableInfo.create(clusterService::localNode).expressions(),
             true));
     }
 

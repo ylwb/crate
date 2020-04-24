@@ -398,7 +398,6 @@ public class InformationSchemaTest extends SQLTransportIntegrationTest {
                 "is_deferrable", "table_catalog", "table_name", "table_schema"));
         execute("SELECT constraint_name, constraint_type, table_name, table_schema FROM " +
                 "information_schema.table_constraints ORDER BY table_schema ASC, table_name ASC");
-        assertEquals(27L, response.rowCount());
         assertThat(printedTable(response.rows()),
             is(
                 "columns_pk| PRIMARY KEY| columns| information_schema\n" +
@@ -430,19 +429,31 @@ public class InformationSchemaTest extends SQLTransportIntegrationTest {
                 "summits_pk| PRIMARY KEY| summits| sys\n"
             ));
 
-        execute("CREATE TABLE test (col1 INTEGER, col2 INTEGER, col3 INT NOT NULL, col4 STRING, " +
-                "PRIMARY KEY(col1,col2))");
+        execute("CREATE TABLE test (\n" +
+                " col1 INTEGER constraint chk_1 check (col1 > 10),\n" +
+                " col2 INTEGER,\n" +
+                " col3 INT NOT NULL,\n" +
+                " col4 STRING,\n" +
+                " PRIMARY KEY(col1,col2),\n" +
+                " CONSTRAINT unnecessary_check CHECK (col2 != col1)\n" +
+                ")");
         ensureGreen();
         execute("SELECT constraint_type, constraint_name, table_name FROM information_schema.table_constraints " +
                 "WHERE table_schema = ?",
             new Object[]{sqlExecutor.getCurrentSchema()});
-        assertEquals(2L, response.rowCount());
+        assertEquals(4L, response.rowCount());
         assertThat(response.rows()[0][0], is("PRIMARY KEY"));
         assertThat(response.rows()[0][1], is("test_pk"));
         assertThat(response.rows()[0][2], is("test"));
         assertThat(response.rows()[1][0], is("CHECK"));
         assertThat(response.rows()[1][1], is(sqlExecutor.getCurrentSchema() + "_test_col3_not_null"));
         assertThat(response.rows()[1][2], is("test"));
+        assertThat(response.rows()[2][0], is("CHECK"));
+        assertThat(response.rows()[2][1], is("unnecessary_check"));
+        assertThat(response.rows()[2][2], is("test"));
+        assertThat(response.rows()[3][0], is("CHECK"));
+        assertThat(response.rows()[3][1], is("chk_1"));
+        assertThat(response.rows()[3][2], is("test"));
     }
 
     @Test
@@ -590,7 +601,7 @@ public class InformationSchemaTest extends SQLTransportIntegrationTest {
     @Test
     public void testDefaultColumns() {
         execute("select * from information_schema.columns order by table_schema, table_name");
-        assertEquals(770, response.rowCount());
+        assertEquals(772, response.rowCount());
     }
 
     @Test
@@ -928,15 +939,16 @@ public class InformationSchemaTest extends SQLTransportIntegrationTest {
                 "   table_schema, " +
                 "   partition_ident, " +
                 "   values, " +
+                "   values['par'], " +
                 "   number_of_shards, " +
                 "   number_of_replicas, " +
                 "   settings['write']['wait_for_active_shards'] " +
                 "from information_schema.table_partitions order by table_name, partition_ident");
         assertEquals(3, response.rowCount());
 
-        Object[] row1 = new Object[]{"my_table", sqlExecutor.getCurrentSchema(), "04132", ImmutableMap.of("par", 1), 5, "0-1", "1"};
-        Object[] row2 = new Object[]{"my_table", sqlExecutor.getCurrentSchema(), "04134", ImmutableMap.of("par", 2), 5, "0-1", "1"};
-        Object[] row3 = new Object[]{"my_table", sqlExecutor.getCurrentSchema(), "04136", ImmutableMap.of("par", 3), 5, "0-1", "1"};
+        Object[] row1 = new Object[]{"my_table", sqlExecutor.getCurrentSchema(), "04132", ImmutableMap.of("par", 1), "1", 5, "0-1", "1"};
+        Object[] row2 = new Object[]{"my_table", sqlExecutor.getCurrentSchema(), "04134", ImmutableMap.of("par", 2), "2", 5, "0-1", "1"};
+        Object[] row3 = new Object[]{"my_table", sqlExecutor.getCurrentSchema(), "04136", ImmutableMap.of("par", 3), "3", 5, "0-1", "1"};
 
         assertArrayEquals(row1, response.rows()[0]);
         assertArrayEquals(row2, response.rows()[1]);

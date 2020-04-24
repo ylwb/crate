@@ -21,7 +21,6 @@
 
 package io.crate.execution.engine.aggregation.impl;
 
-import com.google.common.collect.ImmutableList;
 import io.crate.breaker.RamAccounting;
 import io.crate.breaker.SizeEstimator;
 import io.crate.breaker.SizeEstimatorFactory;
@@ -30,6 +29,7 @@ import io.crate.memory.MemoryManager;
 import io.crate.metadata.FunctionIdent;
 import io.crate.metadata.FunctionInfo;
 import io.crate.execution.engine.aggregation.AggregationFunction;
+import io.crate.metadata.functions.Signature;
 import io.crate.types.DataType;
 import io.crate.types.DataTypes;
 import org.elasticsearch.Version;
@@ -40,19 +40,33 @@ public class ArbitraryAggregation extends AggregationFunction<Object, Object> {
 
     public static final String NAME = "arbitrary";
 
-    private final FunctionInfo info;
-    private final SizeEstimator<Object> partialEstimator;
-
     public static void register(AggregationImplModule mod) {
-        for (final DataType t : DataTypes.PRIMITIVE_TYPES) {
-            mod.register(new ArbitraryAggregation(
-                new FunctionInfo(new FunctionIdent(NAME, ImmutableList.of(t)), t,
-                    FunctionInfo.Type.AGGREGATE)));
+        for (var supportedType : DataTypes.PRIMITIVE_TYPES) {
+            mod.register(
+                Signature.aggregate(
+                    NAME,
+                    supportedType.getTypeSignature(),
+                    supportedType.getTypeSignature()),
+                (signature, args) ->
+                    new ArbitraryAggregation(
+                        new FunctionInfo(
+                            new FunctionIdent(NAME, args),
+                            args.get(0),
+                            FunctionInfo.Type.AGGREGATE
+                        ),
+                        signature
+                    )
+            );
         }
     }
 
-    ArbitraryAggregation(FunctionInfo info) {
+    private final FunctionInfo info;
+    private final Signature signature;
+    private final SizeEstimator<Object> partialEstimator;
+
+    ArbitraryAggregation(FunctionInfo info, Signature signature) {
         this.info = info;
+        this.signature = signature;
         partialEstimator = SizeEstimatorFactory.create(partialType());
     }
 
@@ -61,8 +75,14 @@ public class ArbitraryAggregation extends AggregationFunction<Object, Object> {
         return info;
     }
 
+    @Nullable
     @Override
-    public DataType partialType() {
+    public Signature signature() {
+        return signature;
+    }
+
+    @Override
+    public DataType<?> partialType() {
         return info.returnType();
     }
 

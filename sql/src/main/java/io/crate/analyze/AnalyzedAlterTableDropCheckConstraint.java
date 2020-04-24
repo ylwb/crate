@@ -20,28 +20,30 @@
  * agreement.
  */
 
-package io.crate.expression.reference.partitioned;
+package io.crate.analyze;
 
-import io.crate.metadata.PartitionInfo;
-import io.crate.metadata.PartitionName;
-import io.crate.metadata.RelationName;
-import org.elasticsearch.Version;
-import org.hamcrest.Matchers;
-import org.junit.Test;
+import io.crate.metadata.doc.DocTableInfo;
 
-import java.util.List;
-import java.util.Map;
+public class AnalyzedAlterTableDropCheckConstraint implements DDLStatement {
 
-import static org.hamcrest.MatcherAssert.assertThat;
+    private final DocTableInfo tableInfo;
+    private final String name;
 
-public class PartitionsSettingsExpressionTest {
+    public AnalyzedAlterTableDropCheckConstraint(DocTableInfo tableInfo, String name) {
+        this.tableInfo = tableInfo;
+        this.name = name;
+    }
 
-    @Test
-    public void test_no_npe_on_string_setting_that_is_missing() {
-        var expression = new PartitionsSettingsExpression.StringPartitionTableParameterExpression("foo");
-        PartitionName name = new PartitionName(new RelationName("doc", "dummy"), List.of("dummyValue"));
-        expression.setNextRow(new PartitionInfo(
-            name, 1, "0", Version.CURRENT, null, false, Map.of(), Map.of()));
-        assertThat(expression.value(), Matchers.nullValue());
+    public DocTableInfo tableInfo() {
+        return tableInfo;
+    }
+
+    public String name() {
+        return name;
+    }
+
+    @Override
+    public <C, R> R accept(AnalyzedStatementVisitor<C, R> visitor, C context) {
+        return visitor.visitAlterTableDropCheckConstraint(this, context);
     }
 }

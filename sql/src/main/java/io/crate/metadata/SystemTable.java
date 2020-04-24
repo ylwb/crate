@@ -22,21 +22,6 @@
 
 package io.crate.metadata;
 
-import io.crate.action.sql.SessionContext;
-import io.crate.analyze.WhereClause;
-import io.crate.execution.engine.collect.NestableCollectExpression;
-import io.crate.expression.NestableInput;
-import io.crate.metadata.expressions.RowCollectExpressionFactory;
-import io.crate.metadata.table.Operation;
-import io.crate.metadata.table.TableInfo;
-import io.crate.types.ArrayType;
-import io.crate.types.DataType;
-import io.crate.types.ObjectType;
-import org.elasticsearch.cluster.ClusterState;
-import org.elasticsearch.cluster.node.DiscoveryNodes;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -51,6 +36,27 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+
+import org.elasticsearch.cluster.ClusterState;
+import org.elasticsearch.cluster.node.DiscoveryNodes;
+
+import io.crate.action.sql.SessionContext;
+import io.crate.analyze.WhereClause;
+import io.crate.execution.engine.collect.NestableCollectExpression;
+import io.crate.expression.NestableInput;
+import io.crate.expression.reference.MapLookupByPathExpression;
+import io.crate.expression.symbol.DynamicReference;
+import io.crate.metadata.Reference.IndexType;
+import io.crate.metadata.expressions.RowCollectExpressionFactory;
+import io.crate.metadata.table.Operation;
+import io.crate.metadata.table.TableInfo;
+import io.crate.sql.tree.ColumnPolicy;
+import io.crate.types.ArrayType;
+import io.crate.types.DataType;
+import io.crate.types.ObjectType;
+
 public final class SystemTable<T> implements TableInfo {
 
     private final RelationName name;
@@ -59,11 +65,13 @@ public final class SystemTable<T> implements TableInfo {
     private final List<ColumnIdent> primaryKeys;
     private final List<Reference> rootColumns;
     private final BiFunction<DiscoveryNodes, RoutingProvider, Routing> getRouting;
+    private final Map<ColumnIdent, Function<ColumnIdent, DynamicReference>> dynamicColumns;
 
     public SystemTable(RelationName name,
                        Map<ColumnIdent, Reference> columns,
                        Map<ColumnIdent, RowCollectExpressionFactory<T>> expressions,
                        List<ColumnIdent> primaryKeys,
+                       Map<ColumnIdent, Function<ColumnIdent, DynamicReference>> dynamicColumns,
                        @Nullable BiFunction<DiscoveryNodes, RoutingProvider, Routing> getRouting) {
         this.name = name;
         this.columns = columns;
@@ -75,18 +83,30 @@ public final class SystemTable<T> implements TableInfo {
             .collect(Collectors.toList());
         this.expressions = expressions;
         this.primaryKeys = primaryKeys;
+        this.dynamicColumns = dynamicColumns;
     }
 
     @Nullable
     @Override
     public Reference getReference(ColumnIdent column) {
-        return columns.get(column);
+        return getReadReference(column);
     }
 
     @Nullable
     @Override
     public Reference getReadReference(ColumnIdent column) {
-        return columns.get(column);
+        var ref = columns.get(column);
+        if (ref != null) {
+            return ref;
+        }
+        ColumnIdent parent = column;
+        do {
+            var dynamic = dynamicColumns.get(parent);
+            if (dynamic != null) {
+                return dynamic.apply(column);
+            }
+        } while ((parent = column.getParent()) != null);
+        return null;
     }
 
     @Override
@@ -148,16 +168,26 @@ public final class SystemTable<T> implements TableInfo {
         private final ColumnIdent column;
         private final DataType<U> type;
         private final Function<T, U> getProperty;
+        private final boolean isNullable;
 
         public Column(ColumnIdent column, DataType<U> type, Function<T, U> getProperty) {
+            this(column, type, getProperty, true);
+        }
+
+        public Column(ColumnIdent column, DataType<U> type, Function<T, U> getProperty, boolean isNullable) {
             this.column = column;
             this.type = type;
             this.getProperty = getProperty;
+            this.isNullable = isNullable;
         }
 
         @Override
         public String toString() {
             return '(' + column.sqlFqn() + ", " + type.getName() + ')';
+        }
+
+        public void addExpression(HashMap<ColumnIdent, RowCollectExpressionFactory<T>> expressions) {
+            expressions.put(column, () -> new Expression<>(column, getProperty, expressions));
         }
     }
 
@@ -165,31 +195,59 @@ public final class SystemTable<T> implements TableInfo {
 
         public abstract <U> Builder<T> add(String column, DataType<U> type, Function<T, U> getProperty);
 
-        protected abstract <U> Builder<T> add(ColumnIdent column, DataType<U> type, Function<T, U> getProperty);
+        protected abstract <U> Builder<T> add(Column<T, U> column);
     }
 
     public static class RelationBuilder<T> extends Builder<T> {
 
+        private final RelationName name;
+        private final HashMap<ColumnIdent, Function<ColumnIdent, DynamicReference>> dynamicColumns = new HashMap<>();
         private final ArrayList<Column<T, ?>> columns = new ArrayList<>();
         private List<ColumnIdent> primaryKeys = List.of();
         private BiFunction<DiscoveryNodes, RoutingProvider, Routing> getRouting;
 
+        RelationBuilder(RelationName name) {
+            this.name = name;
+        }
+
+        /**
+         * Override the routing funciton, if not overriden it defaults to `Routing.forTableOnSingleNode`
+         */
         public RelationBuilder<T> withRouting(BiFunction<DiscoveryNodes, RoutingProvider, Routing> getRouting) {
             this.getRouting = getRouting;
             return this;
         }
 
         public <U> RelationBuilder<T> add(String column, DataType<U> type, Function<T, U> getProperty) {
-            return add(new ColumnIdent(column), type, getProperty);
+            return add(new Column<>(new ColumnIdent(column), type, getProperty));
+        }
+
+        public <U> RelationBuilder<T> addNonNull(String column, DataType<U> type, Function<T, U> getProperty) {
+            return add(new Column<>(new ColumnIdent(column), type, getProperty, false));
         }
 
         @Override
-        protected <U> RelationBuilder<T> add(ColumnIdent column, DataType<U> type, Function<T, U> getProperty) {
-            columns.add(new Column<>(column, type, getProperty));
+        protected <U> RelationBuilder<T> add(Column<T, U> column) {
+            columns.add(column);
             return this;
         }
 
-        public SystemTable<T> build(RelationName relationName) {
+        public RelationBuilder<T> addDynamicObject(String column, DataType<?> leafType, Function<T, Map<String, Object>> getObject) {
+            var columnIdent = new ColumnIdent(column);
+            dynamicColumns.put(columnIdent, wanted -> {
+                var ref = new DynamicReference(new ReferenceIdent(name, wanted), RowGranularity.DOC, ColumnPolicy.DYNAMIC);
+                ref.valueType(leafType);
+                return ref;
+            });
+            return add(new Column<>(columnIdent, ObjectType.untyped(), getObject, true) {
+                @Override
+                public void addExpression(HashMap<ColumnIdent, RowCollectExpressionFactory<T>> expressions) {
+                    expressions.put(columnIdent, () -> new MapLookupByPathExpression<>(getObject, List.of(), leafType::value));
+                }
+            });
+        }
+
+        public SystemTable<T> build() {
             LinkedHashMap<ColumnIdent, Reference> refByColumns = new LinkedHashMap<>();
             HashMap<ColumnIdent, RowCollectExpressionFactory<T>> expressions = new HashMap<>();
             columns.sort(Comparator.comparing(x -> x.column));
@@ -199,30 +257,29 @@ public final class SystemTable<T> implements TableInfo {
                 refByColumns.put(
                     column.column,
                     new Reference(
-                        new ReferenceIdent(relationName, column.column),
+                        new ReferenceIdent(name, column.column),
                         RowGranularity.DOC,
                         column.type,
+                        ColumnPolicy.DYNAMIC,
+                        IndexType.NOT_ANALYZED,
+                        column.isNullable,
                         rootColIdx,
                         null
                     )
                 );
-                addExpression(expressions, column);
+                column.addExpression(expressions);
                 if (column.column.isTopLevel()) {
                     rootColIdx++;
                 }
             }
             return new SystemTable<>(
-               relationName,
+               name,
                refByColumns,
                expressions,
                primaryKeys,
+               dynamicColumns,
                getRouting
            );
-        }
-
-        private static <T, U> void addExpression(HashMap<ColumnIdent, RowCollectExpressionFactory<T>> expressions,
-                                                 Column<T, U> column) {
-            expressions.put(column.column, () -> new Expression<>(column.column, column.getProperty, expressions));
         }
 
         public ObjectBuilder<T, RelationBuilder<T>> startObject(String column) {
@@ -250,12 +307,12 @@ public final class SystemTable<T> implements TableInfo {
             }
 
             public <U> ObjectBuilder<T, P> add(String column, DataType<U> type, Function<T, U> getProperty) {
-                return add(baseColumn.append(column), type, getProperty);
+                return add(new Column<>(baseColumn.append(column), type, getProperty));
             }
 
             @Override
-            protected <U> ObjectBuilder<T, P> add(ColumnIdent column, DataType<U> type, Function<T, U> getProperty) {
-                columns.add(new Column<>(column, type, getProperty));
+            protected <U> ObjectBuilder<T, P> add(Column<T, U> column) {
+                columns.add(column);
                 return this;
             }
 
@@ -279,7 +336,7 @@ public final class SystemTable<T> implements TableInfo {
                     typeBuilder.setInnerType(column.column.leafName(), column.type);
                 }
                 ObjectType objectType = typeBuilder.build();
-                parent.add(baseColumn, objectType, new ObjectExpression<>(directChildren));
+                parent.add(new Column<>(baseColumn, objectType, new ObjectExpression<>(directChildren)));
                 for (Column<T, ?> column : columns) {
                     addColumnToParent(column);
                 }
@@ -287,7 +344,7 @@ public final class SystemTable<T> implements TableInfo {
             }
 
             public <U> void addColumnToParent(Column<T, U> column) {
-                parent.add(column.column, column.type, column.getProperty);
+                parent.add(new Column<>(column.column, column.type, column.getProperty));
             }
         }
 
@@ -316,7 +373,7 @@ public final class SystemTable<T> implements TableInfo {
                     typeBuilder.setInnerType(column.column.leafName(), column.type);
                 }
                 ObjectType objectType = typeBuilder.build();
-                parent.add(baseColumn, new ArrayType<>(objectType), getLeafColumnValues(directChildren));
+                parent.add(new Column<>(baseColumn, new ArrayType<>(objectType), getLeafColumnValues(directChildren)));
                 for (var column : columns) {
                     addColumnToParent(column);
                 }
@@ -344,79 +401,81 @@ public final class SystemTable<T> implements TableInfo {
             }
 
             public <U> void addColumnToParent(Column<ItemType, U> column) {
-                parent.add(column.column, new ArrayType<>(column.type), xs -> {
-                    var items = getItems.apply(xs);
-                    ArrayList<U> result = new ArrayList<>(items.size());
-                    for (ItemType item : items) {
-                        result.add(column.getProperty.apply(item));
+                parent.add(new Column<>(
+                    column.column,
+                    new ArrayType<>(column.type),
+                    xs -> {
+                        var items = getItems.apply(xs);
+                        ArrayList<U> result = new ArrayList<>(items.size());
+                        for (ItemType item : items) {
+                            result.add(column.getProperty.apply(item));
+                        }
+                        return result;
                     }
-                    return result;
-                });
+                ));
             }
 
             @Override
             public <U> ObjectArrayBuilder<ItemType, ParentItemType, P> add(String column,
                                                                            DataType<U> type,
                                                                            Function<ItemType, U> getProperty) {
-                return add(baseColumn.append(column), type, getProperty);
+                return add(new Column<>(baseColumn.append(column), type, getProperty));
             }
 
 
             @Override
-            protected <U> ObjectArrayBuilder<ItemType, ParentItemType, P> add(ColumnIdent column,
-                                                                              DataType<U> type,
-                                                                              Function<ItemType, U> getProperty) {
-                columns.add(new Column<>(column, type, getProperty));
+            protected <U> ObjectArrayBuilder<ItemType, ParentItemType, P> add(Column<ItemType, U> column) {
+                columns.add(column);
                 return this;
-            }
-        }
-
-        private static class Expression<T, U> implements NestableCollectExpression<T, U> {
-
-            private final ColumnIdent column;
-            private final Function<T, U> getProperty;
-            private final HashMap<ColumnIdent, RowCollectExpressionFactory<T>> expressions;
-            private T row;
-
-            public Expression(ColumnIdent column, Function<T, U> getProperty, HashMap<ColumnIdent, RowCollectExpressionFactory<T>> expressions) {
-                this.column = column;
-                this.getProperty = getProperty;
-                this.expressions = expressions;
-            }
-
-            @Override
-            public void setNextRow(T row) {
-                this.row = row;
-            }
-
-            @Override
-            public U value() {
-                try {
-                    return getProperty.apply(row);
-                } catch (NullPointerException e) {
-                    // This is to be able to be lazy in the column definitions and things like
-                    // `x -> x.a().b().c().d()`
-                    // Maybe not a good idea because of performance?
-                    return null;
-                }
-            }
-
-            @Nullable
-            public NestableInput<?> getChild(String name) {
-                var factory = expressions.get(column.append(name));
-                return factory == null ? null : factory.create();
             }
         }
     }
 
-    public static <T> RelationBuilder<T> builder() {
-        return new RelationBuilder<>();
+    private static class Expression<T, U> implements NestableCollectExpression<T, U> {
+
+        private final ColumnIdent column;
+        private final Function<T, U> getProperty;
+        private final HashMap<ColumnIdent, RowCollectExpressionFactory<T>> expressions;
+        private T row;
+
+        public Expression(ColumnIdent column, Function<T, U> getProperty, HashMap<ColumnIdent, RowCollectExpressionFactory<T>> expressions) {
+            this.column = column;
+            this.getProperty = getProperty;
+            this.expressions = expressions;
+        }
+
+        @Override
+        public void setNextRow(T row) {
+            this.row = row;
+        }
+
+        @Override
+        public U value() {
+            try {
+                return getProperty.apply(row);
+            } catch (NullPointerException e) {
+                // This is to be able to be lazy in the column definitions and things like
+                // `x -> x.a().b().c().d()`
+                // Maybe not a good idea because of performance?
+                return null;
+            }
+        }
+
+        @Nullable
+        public NestableInput<?> getChild(String name) {
+            var factory = expressions.get(column.append(name));
+            return factory == null ? null : factory.create();
+        }
+    }
+
+    public static <T> RelationBuilder<T> builder(RelationName name) {
+        return new RelationBuilder<>(name);
     }
 
 
     static class ObjectExpression<T> implements Function<T, Map<String, Object>> {
 
-        private List<Column<T, ?>> columns;
+        private final List<Column<T, ?>> columns;
 
         ObjectExpression(List<Column<T, ?>> columns) {
             this.columns = columns;

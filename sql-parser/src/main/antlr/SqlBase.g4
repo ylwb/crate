@@ -50,6 +50,7 @@ statement
         (LIKE pattern=stringLiteral | where)?                                        #showColumns
     | SHOW (qname | ALL)                                                             #showSessionParameter
     | ALTER TABLE alterTableDefinition ADD COLUMN? addColumnDefinition               #addColumn
+    | ALTER TABLE alterTableDefinition DROP CONSTRAINT ident                         #dropCheckConstraint
     | ALTER TABLE alterTableDefinition
         (SET '(' genericProperties ')' | RESET ('(' ident (',' ident)* ')')?)        #alterTableProperties
     | ALTER BLOB TABLE alterTableDefinition
@@ -517,6 +518,7 @@ tableElement
     : columnDefinition                                                               #columnDefinitionDefault
     | PRIMARY_KEY columns                                                            #primaryKeyConstraint
     | INDEX name=ident USING method=ident columns withProperties?                    #indexDefinition
+    | checkConstraint                                                                #tableCheckConstraint
     ;
 
 columnDefinition
@@ -546,6 +548,7 @@ definedDataType
     : DOUBLE PRECISION
     | TIMESTAMP WITHOUT TIME ZONE
     | TIMESTAMP WITH TIME ZONE
+    | CHARACTER VARYING
     ;
 
 objectTypeDefinition
@@ -559,6 +562,11 @@ columnConstraint
     | INDEX USING method=ident withProperties?                                       #columnIndexConstraint
     | INDEX OFF                                                                      #columnIndexOff
     | STORAGE withProperties                                                         #columnStorageDefinition
+    | checkConstraint                                                                #columnCheckConstraint
+    ;
+
+checkConstraint
+    : (CONSTRAINT name=ident)? CHECK '(' expression=booleanExpression ')'
     ;
 
 withProperties
@@ -645,7 +653,7 @@ isolationLevel
     ;
 
 nonReserved
-    : ALIAS | ANALYZE | ANALYZER | AT | BERNOULLI | BLOB | CATALOGS | CHAR_FILTERS | CLUSTERED
+    : ALIAS | ANALYZE | ANALYZER | AT | BERNOULLI | BLOB | CATALOGS | CHAR_FILTERS | CHECK | CLUSTERED
     | COLUMNS | COPY | CURRENT |  DAY | DEALLOCATE | DISTRIBUTED | DUPLICATE | DYNAMIC | EXPLAIN
     | EXTENDS | FOLLOWING | FORMAT | FULLTEXT | FUNCTIONS | GEO_POINT | GEO_SHAPE | GLOBAL
     | GRAPHVIZ | HOUR | IGNORED | ILIKE | INTERVAL | KEY | KILL | LICENSE | LOGICAL | LOCAL
@@ -661,7 +669,7 @@ nonReserved
     | WORK | SERIALIZABLE | REPEATABLE | COMMITTED | UNCOMMITTED | READ | WRITE | WINDOW | DEFERRABLE
     | STRING_TYPE | IP | DOUBLE | FLOAT | TIMESTAMP | LONG | INT | INTEGER | SHORT | BYTE | BOOLEAN | PRECISION
     | REPLACE | RETURNING | SWAP | GC | DANGLING | ARTIFACTS | DECOMMISSION | LEADING | TRAILING | BOTH | TRIM
-    | CURRENT_SCHEMA | PROMOTE
+    | CURRENT_SCHEMA | PROMOTE | CHARACTER | VARYING
     ;
 
 SELECT: 'SELECT';
@@ -795,6 +803,8 @@ DOUBLE: 'DOUBLE';
 PRECISION: 'PRECISION';
 TIMESTAMP: 'TIMESTAMP';
 IP: 'IP';
+CHARACTER: 'CHARACTER';
+VARYING: 'VARYING';
 OBJECT: 'OBJECT';
 STRING_TYPE: 'STRING';
 GEO_POINT: 'GEO_POINT';
@@ -829,6 +839,7 @@ INPUT: 'INPUT';
 
 ANALYZE: 'ANALYZE';
 CONSTRAINT: 'CONSTRAINT';
+CHECK: 'CHECK';
 DESCRIBE: 'DESCRIBE';
 EXPLAIN: 'EXPLAIN';
 FORMAT: 'FORMAT';
