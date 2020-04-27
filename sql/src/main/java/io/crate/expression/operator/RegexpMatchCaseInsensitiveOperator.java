@@ -24,8 +24,10 @@ package io.crate.expression.operator;
 import io.crate.data.Input;
 import io.crate.metadata.FunctionInfo;
 import io.crate.metadata.TransactionContext;
+import io.crate.metadata.functions.Signature;
 import io.crate.types.DataTypes;
 
+import javax.annotation.Nullable;
 import java.util.regex.Pattern;
 
 
@@ -35,12 +37,25 @@ public class RegexpMatchCaseInsensitiveOperator extends Operator<String> {
     public static final FunctionInfo INFO = generateInfo(NAME, DataTypes.STRING);
 
     public static void register(OperatorModule module) {
-        module.registerOperatorFunction(new RegexpMatchCaseInsensitiveOperator());
+        module.register(
+            Signature.scalar(
+                NAME,
+                DataTypes.STRING.getTypeSignature(),
+                DataTypes.STRING.getTypeSignature(),
+                Operator.RETURN_TYPE.getTypeSignature()
+            ),
+            (signature, dataTypes) -> new RegexpMatchCaseInsensitiveOperator(signature)
+        );
     }
 
+    private final Signature signature;
+
+    public RegexpMatchCaseInsensitiveOperator(Signature signature) {
+        this.signature = signature;
+    }
 
     @Override
-    public Boolean evaluate(TransactionContext txnCtx, Input<String>... args) {
+    public Boolean evaluate(TransactionContext txnCtx, Input<String>[] args) {
         assert args.length == 2 : "invalid number of arguments";
         String source = args[0].value();
         if (source == null) {
@@ -58,5 +73,11 @@ public class RegexpMatchCaseInsensitiveOperator extends Operator<String> {
     @Override
     public FunctionInfo info() {
         return INFO;
+    }
+
+    @Nullable
+    @Override
+    public Signature signature() {
+        return signature;
     }
 }

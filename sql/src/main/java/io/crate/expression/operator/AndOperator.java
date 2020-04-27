@@ -29,8 +29,10 @@ import io.crate.expression.symbol.Symbol;
 import io.crate.expression.symbol.SymbolVisitor;
 import io.crate.metadata.FunctionInfo;
 import io.crate.metadata.TransactionContext;
+import io.crate.metadata.functions.Signature;
 import io.crate.types.DataTypes;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -41,13 +43,33 @@ public class AndOperator extends Operator<Boolean> {
     public static final String NAME = "op_and";
     public static final FunctionInfo INFO = generateInfo(NAME, DataTypes.BOOLEAN);
 
+    public static void register(OperatorModule module) {
+        module.register(
+            Signature.scalar(
+                NAME,
+                DataTypes.BOOLEAN.getTypeSignature(),
+                DataTypes.BOOLEAN.getTypeSignature(),
+                DataTypes.BOOLEAN.getTypeSignature()
+            ),
+            (signature, dataTypes) -> new AndOperator(signature)
+        );
+    }
+
+    private final Signature signature;
+
+    public AndOperator(Signature signature) {
+        this.signature = signature;
+    }
+
+    @Nullable
+    @Override
+    public Signature signature() {
+        return signature;
+    }
+
     @Override
     public FunctionInfo info() {
         return INFO;
-    }
-
-    public static void register(OperatorModule module) {
-        module.registerOperatorFunction(new AndOperator());
     }
 
     @Override
