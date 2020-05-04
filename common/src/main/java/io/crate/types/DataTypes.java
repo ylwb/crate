@@ -69,6 +69,8 @@ public final class DataTypes {
     public static final IntegerType INTEGER = IntegerType.INSTANCE;
     public static final LongType LONG = LongType.INSTANCE;
 
+    public static final TimeType TIME = TimeType.INSTANCE;
+
     public static final TimestampType TIMESTAMPZ = TimestampType.INSTANCE_WITH_TZ;
     public static final TimestampType TIMESTAMP = TimestampType.INSTANCE_WITHOUT_TZ;
 
@@ -134,6 +136,7 @@ public final class DataTypes {
             entry(ShortType.ID, in -> SHORT),
             entry(IntegerType.ID, in -> INTEGER),
             entry(LongType.ID, in -> LONG),
+            entry(TimeType.ID, in -> TIME),
             entry(TimestampType.ID_WITH_TZ, in -> TIMESTAMPZ),
             entry(TimestampType.ID_WITHOUT_TZ, in -> TIMESTAMP),
             entry(ObjectType.ID, ObjectType::new),
@@ -167,6 +170,7 @@ public final class DataTypes {
         entry(IP.id(), Set.of(STRING.id())),
         entry(TIMESTAMPZ.id(), Set.of(DOUBLE.id(), LONG.id(), STRING.id(), TIMESTAMP.id())),
         entry(TIMESTAMP.id(), Set.of(DOUBLE.id(), LONG.id(), STRING.id(), TIMESTAMPZ.id())),
+        entry(TIME.id(), Set.of(FLOAT.id(), INTEGER.id(), STRING.id())),
         entry(UNDEFINED.id(), Set.of()), // actually convertible to every type, see NullType
         entry(GEO_POINT.id(), Set.of()),
         entry(GEO_SHAPE.id(), Set.of(ObjectType.ID)),

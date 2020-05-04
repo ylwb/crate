@@ -39,6 +39,7 @@ import io.crate.types.DataTypes;
 import io.crate.types.GeoShapeType;
 import io.crate.types.ObjectType;
 import io.crate.types.StringType;
+import io.crate.types.TimeType;
 import io.crate.types.TimestampType;
 import org.apache.logging.log4j.LogManager;
 import org.elasticsearch.common.logging.DeprecationLogger;
@@ -449,6 +450,7 @@ public class AnalyzedColumnDefinition<T> {
                 mapping.put("format", "epoch_millis||strict_date_optional_time");
                 break;
             case TimestampType.ID_WITHOUT_TZ:
+            case TimeType.ID:
                 mapping.put("format", "epoch_millis||strict_date_optional_time");
                 mapping.put("ignore_timezone", true);
                 break;
