@@ -42,6 +42,7 @@ import io.crate.sql.tree.CreateTable;
 import io.crate.sql.tree.CreateUser;
 import io.crate.sql.tree.DecommissionNodeStatement;
 import io.crate.sql.tree.DenyPrivilege;
+import io.crate.sql.tree.DoubleLiteral;
 import io.crate.sql.tree.DropAnalyzer;
 import io.crate.sql.tree.DropBlobTable;
 import io.crate.sql.tree.DropFunction;
@@ -53,6 +54,7 @@ import io.crate.sql.tree.DropView;
 import io.crate.sql.tree.EscapedCharStringLiteral;
 import io.crate.sql.tree.Explain;
 import io.crate.sql.tree.Expression;
+import io.crate.sql.tree.FloatLiteral;
 import io.crate.sql.tree.FunctionArgument;
 import io.crate.sql.tree.GCDanglingArtifacts;
 import io.crate.sql.tree.GenericProperties;
@@ -60,6 +62,7 @@ import io.crate.sql.tree.GrantPrivilege;
 import io.crate.sql.tree.IndexColumnConstraint;
 import io.crate.sql.tree.IndexDefinition;
 import io.crate.sql.tree.Insert;
+import io.crate.sql.tree.IntegerLiteral;
 import io.crate.sql.tree.IntervalLiteral;
 import io.crate.sql.tree.Join;
 import io.crate.sql.tree.JoinCriteria;
@@ -82,6 +85,7 @@ import io.crate.sql.tree.Relation;
 import io.crate.sql.tree.RevokePrivilege;
 import io.crate.sql.tree.Select;
 import io.crate.sql.tree.SelectItem;
+import io.crate.sql.tree.ShortLiteral;
 import io.crate.sql.tree.SingleColumn;
 import io.crate.sql.tree.SortItem;
 import io.crate.sql.tree.StringLiteral;
@@ -676,6 +680,30 @@ public final class SqlFormatter {
         @Override
         protected Void visitLongLiteral(LongLiteral node, Integer indent) {
             builder.append(String.format(Locale.ENGLISH, "%d", node.getValue()));
+            return null;
+        }
+
+        @Override
+        protected Void visitIntegerLiteral(IntegerLiteral node, Integer context) {
+            builder.append(String.format(Locale.ENGLISH, "%d", node.getValue()));
+            return null;
+        }
+
+        @Override
+        protected Void visitShortLiteral(ShortLiteral node, Integer context) {
+            builder.append(String.format(Locale.ENGLISH, "%d", node.getValue()));
+            return null;
+        }
+
+        @Override
+        protected Void visitDoubleLiteral(DoubleLiteral node, Integer context) {
+            builder.append(String.format(Locale.ENGLISH, "%f", node.getValue()));
+            return null;
+        }
+
+        @Override
+        protected Void visitFloatLiteral(FloatLiteral node, Integer context) {
+            builder.append(String.format(Locale.ENGLISH, "%f", node.getValue()));
             return null;
         }
 

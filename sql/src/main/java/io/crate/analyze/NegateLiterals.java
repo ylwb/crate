@@ -56,7 +56,7 @@ public final class NegateLiterals extends SymbolVisitor<Void, Symbol> {
             case FloatType.ID:
                 return Literal.of(valueType, (Double) value * -1);
             case ShortType.ID:
-                return Literal.of(valueType, (Short) value * -1);
+                return Literal.of(valueType, ((Integer) ((Short) value * -1)).shortValue());
             case IntegerType.ID:
                 return Literal.of(valueType, (Integer) value * -1);
             case LongType.ID:

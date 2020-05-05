@@ -27,11 +27,13 @@ import io.crate.sql.tree.Cast;
 import io.crate.sql.tree.ColumnType;
 import io.crate.sql.tree.Expression;
 import io.crate.sql.tree.FunctionCall;
+import io.crate.sql.tree.IntegerLiteral;
 import io.crate.sql.tree.LongLiteral;
 import io.crate.sql.tree.NegativeExpression;
 import io.crate.sql.tree.ObjectLiteral;
 import io.crate.sql.tree.ParameterExpression;
 import io.crate.sql.tree.QualifiedNameReference;
+import io.crate.sql.tree.ShortLiteral;
 import io.crate.sql.tree.StringLiteral;
 import io.crate.sql.tree.SubqueryExpression;
 import io.crate.sql.tree.SubscriptExpression;
@@ -137,6 +139,20 @@ public final class SubscriptValidator {
                     String.format(Locale.ENGLISH, "Array index must be in range 1 to %s",
                         MAX_VALUE));
             }
+            context.index(new Cast(node, new ColumnType<>("integer")));
+            return null;
+        }
+
+        @Override
+        protected Void visitIntegerLiteral(IntegerLiteral node, SubscriptContext context) {
+            validateNestedArrayAccess(context);
+            context.index(new Cast(node, new ColumnType<>("integer")));
+            return null;
+        }
+
+        @Override
+        protected Void visitShortLiteral(ShortLiteral node, SubscriptContext context) {
+            validateNestedArrayAccess(context);
             context.index(new Cast(node, new ColumnType<>("integer")));
             return null;
         }

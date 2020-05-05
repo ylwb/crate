@@ -29,6 +29,7 @@ import io.crate.sql.tree.CreateTable;
 import io.crate.sql.tree.CurrentTime;
 import io.crate.sql.tree.DoubleLiteral;
 import io.crate.sql.tree.Expression;
+import io.crate.sql.tree.FloatLiteral;
 import io.crate.sql.tree.FunctionCall;
 import io.crate.sql.tree.Node;
 import io.crate.sql.tree.ParameterExpression;
@@ -167,10 +168,10 @@ public class TestSqlParser {
 
     @Test
     public void testDoubleInQuery() {
-        assertStatement("SELECT 123.456E7 FROM DUAL",
+        assertStatement("SELECT 12345.1234 FROM DUAL",
             new Query(
                 new QuerySpecification(
-                    selectList(new DoubleLiteral("123.456E7")),
+                    selectList(new DoubleLiteral("12345.1234")),
                     table(QualifiedName.of("dual")),
                     Optional.empty(),
                     List.of(),

@@ -31,6 +31,10 @@ public class DoubleLiteral extends Literal {
         this.value = Double.parseDouble(requireNonNull(value, "value is null"));
     }
 
+    public DoubleLiteral(double value) {
+        this.value = value;
+    }
+
     public double getValue() {
         return value;
     }
