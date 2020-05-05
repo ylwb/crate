@@ -353,7 +353,7 @@ public final class DataTypes {
 
     @Nullable
     public static DataType<?> ofNameOrNull(String typeName) {
-        return TYPES_BY_NAME_OR_ALIAS.getOrDefault(typeName, null);
+        return TYPES_BY_NAME_OR_ALIAS.get(typeName);
     }
 
     private static final Map<String, DataType> MAPPING_NAMES_TO_TYPES = Map.ofEntries(
